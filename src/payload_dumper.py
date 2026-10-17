@@ -1,6 +1,6 @@
 """Adapter for the documented payload-dumper-go command-line backend."""
 from __future__ import annotations
-import hashlib, os, shutil, subprocess, sys
+import hashlib, os, shutil, subprocess, sys, threading
 from pathlib import Path
 from typing import Callable
 Progress = Callable[[str], None]
