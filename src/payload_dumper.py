@@ -12,10 +12,8 @@ def _bundle_root() -> Path:
         # The frozen executable is AppDir/usr/bin/payload-dumper-gui-bin.
         # The backend lives at AppDir/opt/payload-dumper/bin/.
         executable = Path(sys.executable).resolve()
-        # Find the AppDir by its bundled backend, independent of the app name.
-        for parent in executable.parents:
-            if (parent / "opt" / "payload-dumper" / "bin" / "payload-dumper-go").is_file():
-                return parent
+        if executable.parent.name == "bin" and executable.parent.parent.name == "usr":
+            return executable.parent.parent.parent
         return executable.parent
     return Path(__file__).resolve().parent.parent
 def _find_cli() -> list[str] | None:
