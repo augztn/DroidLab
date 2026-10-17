@@ -91,21 +91,19 @@ class PayloadDumperApp(TkinterDnD.Tk):
         ttk.Button(row, text="Preview command", command=self._update_flash_preview).pack(side="left")
         ttk.Button(row, text="Flash image…", command=self._flash_image).pack(side="left", padx=(8, 0))
 
-        # Destructive maintenance examples are informational only; they are never run by this panel.
+        # Executable destructive maintenance actions; each action requires explicit confirmation.
         reference = ttk.Frame(tab, style="Panel.TFrame", padding=14)
         reference.grid(row=2, column=1, sticky="new")
-        ttk.Label(reference, text="FASTBOOT COMMAND REFERENCE", background="#1f2937", foreground="#93c5fd", font=("Sans", 12, "bold"), wraplength=360).pack(anchor="w")
-        ttk.Label(reference, text="Erasing & Formatting", background="#1f2937", foreground="#fb923c", font=("Sans", 13, "bold")).pack(anchor="w", pady=(14, 5))
-        ttk.Label(
-            reference,
-            text="Erase cache (if the device has a cache partition):\nfastboot erase cache\n\nErase user data:\nfastboot erase userdata\n\nWipe user data and cache where supported:\nfastboot -w",
-            background="#1f2937", foreground="#fdba74", justify="left", wraplength=360,
-        ).pack(anchor="w")
-        ttk.Label(
-            reference,
-            text="These commands can permanently delete data. Support varies by device and partition layout. Run commands manually only after confirming the target device and understanding the consequences.",
-            background="#1f2937", foreground="#fca5a5", justify="left", wraplength=360,
-        ).pack(anchor="w", pady=(14, 0))
+        ttk.Label(reference, text="ERASING & FORMATTING", background="#1f2937", foreground="#fb923c", font=("Sans", 13, "bold")).pack(anchor="w")
+        ttk.Label(reference, text="Select a Fastboot device on the left, then choose an operation. These actions can erase personal data.", background="#1f2937", foreground="#fca5a5", justify="left", wraplength=360).pack(anchor="w", pady=(8, 12))
+        ttk.Button(reference, text="Erase cache", command=lambda: self._run_fastboot_maintenance("erase", "cache")).pack(fill="x", pady=3)
+        ttk.Button(reference, text="Erase userdata", command=lambda: self._run_fastboot_maintenance("erase", "userdata")).pack(fill="x", pady=3)
+        ttk.Button(reference, text="Wipe data (fastboot -w)", command=lambda: self._run_fastboot_maintenance("-w")).pack(fill="x", pady=3)
+        self.maintenance_command = tk.StringVar(value="Select an operation to preview its command.")
+        ttk.Label(reference, text="COMMAND", background="#1f2937", foreground="#93c5fd").pack(anchor="w", pady=(14, 5))
+        ttk.Label(reference, textvariable=self.maintenance_command, background="#0b1220", foreground="#f1f5f9", padding=9, justify="left", wraplength=360).pack(fill="x")
+        self.maintenance_status = tk.StringVar(value="No maintenance command executed.")
+        ttk.Label(reference, textvariable=self.maintenance_status, background="#1f2937", foreground="#cbd5e1", wraplength=360, justify="left").pack(anchor="w", pady=(10, 0))
 
         self.flash_image.trace_add("write", lambda *_: self._on_flash_image_changed())
         self.flash_partition.trace_add("write", lambda *_: self._update_flash_preview())
@@ -305,6 +303,49 @@ class PayloadDumperApp(TkinterDnD.Tk):
         binary,serial=selected
         if not messagebox.askyesno("Create bugreport","The report may include device identifiers, logs, and app activity.\nSave diagnostics from "+serial+" to:\n"+path+"?",icon="warning"):return
         threading.Thread(target=self._adb_task,args=([binary,"-s",serial,"bugreport",path],600,"bugreport"),daemon=True).start()
+
+    def _run_fastboot_maintenance(self, operation, partition=None):
+        binary = shutil.which("fastboot")
+        if not binary:
+            messagebox.showerror("Fastboot not found", "Install Android SDK Platform-Tools and ensure fastboot is on PATH.")
+            return
+        selected = getattr(self, "_fastboot_targets", {}).get(self.fastboot_device.get())
+        if not selected:
+            messagebox.showwarning("Select Fastboot device", "Click Refresh devices and select a connected Fastboot device first.")
+            return
+        serial = selected[0] if isinstance(selected, (tuple, list)) else selected
+        if operation == "-w":
+            command = [binary, "-s", serial, "-w"]
+            label = "Wipe user data and cache (fastboot -w)"
+            warning = "This will wipe user data and cache on device " + serial + ". This is destructive and may remove your apps, accounts, photos, and files. Continue only if you have a backup and intend to factory-reset this device."
+        else:
+            command = [binary, "-s", serial, operation, partition]
+            label = "Erase " + partition
+            if partition == "cache":
+                warning = "This will erase the cache partition on " + serial + ", if this device has one. Some devices do not have a separate cache partition. Continue?"
+            else:
+                warning = "This will erase the userdata partition on " + serial + " and permanently delete user data. This can make data unrecoverable. Ensure you have a backup. Continue?"
+        rendered = " ".join(shlex.quote(part) for part in command)
+        self.maintenance_command.set(rendered)
+        if not messagebox.askyesno("Confirm destructive Fastboot operation", warning + "\n\nCommand to execute:\n" + rendered, icon="warning"):
+            self.maintenance_status.set("Cancelled: " + label)
+            self._append("Fastboot maintenance cancelled: " + rendered)
+            return
+        self.maintenance_status.set("Running: " + label + "…")
+        self._append("Executing Fastboot maintenance: " + rendered)
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=900, check=False)
+            output = (result.stdout + "\n" + result.stderr).strip()
+            self._append(output or ("Fastboot exit status: " + str(result.returncode)))
+            if result.returncode == 0:
+                self.maintenance_status.set("Completed: " + label)
+                messagebox.showinfo("Fastboot operation complete", label + " completed successfully.\n\n" + (output or "fastboot exit status 0"))
+            else:
+                self.maintenance_status.set("Failed: " + label)
+                messagebox.showerror("Fastboot operation failed", output or "fastboot exit status " + str(result.returncode))
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            self.maintenance_status.set("Failed: " + label)
+            messagebox.showerror("Fastboot operation failed", str(exc))
 
     def _on_flash_image_changed(self):
         path = Path(self.flash_image.get().strip().strip(chr(34)).strip(chr(39)))
