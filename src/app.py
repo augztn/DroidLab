@@ -35,28 +35,61 @@ class PayloadDumperApp(TkinterDnD.Tk):
         return shutil.which(name)
 
     def _show_about(self):
+        """Show a polished, readable About dialog with working project links."""
         dialog = tk.Toplevel(self)
         dialog.title("About DroidLab")
-        dialog.geometry("480x360")
-        dialog.resizable(False, False)
+        dialog.geometry("560x470")
+        dialog.minsize(520, 440)
+        dialog.resizable(True, True)
         dialog.transient(self)
         dialog.configure(bg="#111827")
         dialog.grab_set()
-        body = ttk.Frame(dialog, padding=24)
-        body.pack(fill="both", expand=True)
-        ttk.Label(body, text="DroidLab", font=("Sans", 25, "bold")).pack(anchor="center", pady=(2, 4))
-        ttk.Label(body, text="Android firmware toolkit for Linux", style="Muted.TLabel").pack(anchor="center", pady=(0, 18))
-        ttk.Separator(body).pack(fill="x", pady=(0, 16))
-        ttk.Label(body, text="Created by", style="Muted.TLabel").pack(anchor="center")
-        ttk.Label(body, text="nightx24 (augztn)", font=("Sans", 16, "bold")).pack(anchor="center", pady=(3, 12))
-        link = ttk.Label(body, text="Instagram: @augztn", foreground="#60a5fa", cursor="hand2", font=("Sans", 12, "underline"))
-        link.pack(anchor="center", pady=(0, 12))
-        link.bind("<Button-1>", lambda _event: webbrowser.open("https://www.instagram.com/augztn/"))
-        github_link = ttk.Label(body, text="GitHub: github.com/nightx24", foreground="#60a5fa", cursor="hand2", font=("Sans", 12, "underline"))
-        github_link.pack(anchor="center", pady=(0, 12))
-        github_link.bind("<Button-1>", lambda _event: webbrowser.open("https://github.com/nightx24"))
-        ttk.Label(body, text="Payload inspection and extraction · Fastboot tools · ADB & OTA sideload", style="Muted.TLabel", wraplength=410, justify="center").pack(anchor="center", pady=(0, 16))
-        ttk.Button(body, text="Close", command=dialog.destroy).pack(anchor="center")
+
+        # Center the dialog over the main window without relying on a fixed screen size.
+        self.update_idletasks()
+        x = self.winfo_rootx() + max(0, (self.winfo_width() - 560) // 2)
+        y = self.winfo_rooty() + max(0, (self.winfo_height() - 470) // 2)
+        dialog.geometry(f"+{x}+{y}")
+
+        shell = ttk.Frame(dialog, padding=22)
+        shell.pack(fill="both", expand=True)
+        hero = tk.Frame(shell, bg="#1d4ed8", padx=18, pady=18)
+        hero.pack(fill="x")
+        tk.Label(hero, text="DL", bg="#1d4ed8", fg="#ffffff",
+                 font=("Sans", 18, "bold"), width=3, height=1).pack(pady=(0, 8))
+        tk.Label(hero, text="DroidLab", bg="#1d4ed8", fg="#ffffff",
+                 font=("Sans", 25, "bold")).pack()
+        tk.Label(hero, text="Android firmware toolkit", bg="#1d4ed8", fg="#dbeafe",
+                 font=("Sans", 12)).pack(pady=(5, 0))
+
+        ttk.Label(shell, text="Inspect payloads. Work with ADB. Manage Fastboot tasks.",
+                  style="Muted.TLabel", wraplength=480, justify="center").pack(
+                      fill="x", pady=(16, 14))
+        details = ttk.Frame(shell, style="Panel.TFrame", padding=14)
+        details.pack(fill="x")
+        ttk.Label(details, text="CREATED BY", background="#1f2937",
+                  foreground="#93c5fd", font=("Sans", 9, "bold")).pack(anchor="w")
+        ttk.Label(details, text="nightx24 (augztn)", background="#1f2937",
+                  foreground="#f9fafb", font=("Sans", 15, "bold")).pack(
+                      anchor="w", pady=(3, 10))
+        links = ttk.Frame(details, style="Panel.TFrame")
+        links.pack(fill="x")
+        instagram = ttk.Label(links, text="Instagram  ↗", background="#1f2937",
+                              foreground="#60a5fa", cursor="hand2",
+                              font=("Sans", 11, "underline"))
+        instagram.pack(side="left", padx=(0, 18))
+        instagram.bind("<Button-1>", lambda _event: webbrowser.open("https://www.instagram.com/augztn/"))
+        github = ttk.Label(links, text="GitHub  ↗", background="#1f2937",
+                           foreground="#60a5fa", cursor="hand2",
+                           font=("Sans", 11, "underline"))
+        github.pack(side="left")
+        github.bind("<Button-1>", lambda _event: webbrowser.open("https://github.com/nightx24"))
+
+        footer = ttk.Frame(shell)
+        footer.pack(fill="x", pady=(16, 0))
+        ttk.Label(footer, text="DroidLab · Community firmware utility",
+                  style="Muted.TLabel").pack(side="left", fill="x", expand=True)
+        ttk.Button(footer, text="Close", command=dialog.destroy).pack(side="right")
 
     def _build(self):
         s=ttk.Style(self)
