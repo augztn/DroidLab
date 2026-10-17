@@ -8,7 +8,7 @@ from tkinterdnd2 import DND_FILES, TkinterDnD
 from pathlib import Path
 from payload_dumper import BackendError, extract, inspect_source, sha256_file
 
-APP_NAME = "FlashLab"  # Canonical product name.
+APP_NAME = "DroidLab"  # Canonical product name.
 class PayloadDumperApp(TkinterDnD.Tk):
     def __init__(self):
         super().__init__(); self.title(APP_NAME); self.geometry("1440x900"); self.minsize(1024,700); self.configure(bg="#111827")
