@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """DroidLab Linux desktop UI."""
 from __future__ import annotations
-import os, queue, threading, tkinter as tk, shutil, re, shlex
+import os, queue, threading, tkinter as tk, shutil, re, shlex, sys
 import subprocess, webbrowser
 from tkinter import filedialog, messagebox, ttk
 from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -20,6 +20,20 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.configure(menu=menu)
         self.source=tk.StringVar(); self.output=tk.StringVar(value=str(Path.home()/APP_NAME)); self.fingerprint=tk.BooleanVar(value=True); self.status=tk.StringVar(value="Ready")
         self.parts={}; self.part_vars={}; self._build(); self.after(100,self._poll_events)
+    def _tool_path(self, name):
+        """Prefer bundled platform-tools, then fall back to the user's PATH."""
+        candidates = []
+        if getattr(sys, "frozen", False):
+            root = Path(sys.executable).resolve().parent
+            candidates.extend([root / "bin" / name, root / "platform-tools" / name])
+        else:
+            root = Path(__file__).resolve().parent.parent
+            candidates.extend([root / "bin" / name, root / "platform-tools" / name])
+        for candidate in candidates:
+            if candidate.is_file():
+                return str(candidate)
+        return shutil.which(name)
+
     def _show_about(self):
         dialog = tk.Toplevel(self)
         dialog.title("About DroidLab")
@@ -183,7 +197,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.adb_log_process=None; self.adb_log_window=None; self.adb_log_text=None
 
     def _refresh_adb_devices(self):
-        binary=shutil.which("adb")
+        binary=self._tool_path("adb.exe" if os.name == "nt" else "adb") or self._tool_path("adb")
         if not binary: messagebox.showerror("ADB not found","Install Android SDK Platform-Tools and ensure adb is on PATH."); return
         try: result=subprocess.run([binary,"devices","-l"],capture_output=True,text=True,timeout=10,check=False)
         except (OSError,subprocess.TimeoutExpired) as exc: messagebox.showerror("ADB scan failed",str(exc)); return
@@ -457,7 +471,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         threading.Thread(target=self._adb_task,args=([binary,"-s",serial,"bugreport",path],600,"bugreport"),daemon=True).start()
 
     def _run_fastboot_maintenance(self, operation, partition=None):
-        binary = shutil.which("fastboot")
+        binary = self._tool_path("fastboot.exe" if os.name == "nt" else "fastboot") or self._tool_path("fastboot")
         if not binary:
             messagebox.showerror("Fastboot not found", "Install Android SDK Platform-Tools and ensure fastboot is on PATH.")
             return
