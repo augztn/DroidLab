@@ -1,43 +1,47 @@
 # Payload Dumper for Linux
 
-A portable Linux desktop application for inspecting and extracting partitions from Android OTA packages.
+A Linux desktop GUI for inspecting and extracting Android OTA `payload.bin` files and OTA ZIP packages. Targets x86_64 AppImage builds for Ubuntu, Fedora, and Arch Linux.
 
-## Goals
+## Current implementation
 
-- GUI for selecting local `payload.bin` or OTA `.zip` files.
-- Browse partitions, choose one or more, and select an output directory.
-- Show extraction progress, status, errors, and cancellation.
-- Optional SHA-256 verification of extracted images.
-- Support remote OTA URLs when the HTTP server supports byte-range requests.
-- Ship as a portable AppImage for x86_64 Linux on Ubuntu, Fedora, and Arch Linux.
+- Tkinter desktop interface with source and output pickers.
+- Inspect OTA metadata and show partition names/sizes with multi-select controls.
+- Extract all partitions or selected partitions.
+- Display backend output and provide cancellation by terminating the backend process.
+- Optional SHA-256 fingerprints for output files. These fingerprints are not a substitute for the OTA backend's own integrity checks.
+- AppImage build script that packages a frozen Python GUI plus the `payload-dumper-go` backend.
 
-## Packaging target
+## Build locally
 
-The primary release artifact is an AppImage. It should bundle the GUI, payload extraction backend, and non-system runtime libraries. It should not require Python, Rust, or a compiler on the user's machine. The Linux host still needs a compatible FUSE/AppImage runtime; a documented extraction fallback will be provided for systems without FUSE.
+Build dependencies on Ubuntu/Debian:
+
+```bash
+sudo apt update
+sudo apt install python3 python3-tk python3-pip xz-utils wget file
+python3 -m pip install --user pyinstaller
+```
+
+Then install `appimagetool` and run:
+
+```bash
+VERSION=0.1.0 bash scripts/build-linux.sh
+```
+
+The build downloads the `payload-dumper-go` release binary and embeds its Apache-2.0 license notice in the AppDir. The AppImage build is currently x86_64 by default. The build script can create an AppDir if `appimagetool` is missing, but it will return a non-zero status rather than claim an AppImage was created.
+
+For development, run `bash scripts/run-portable.sh`. The local development mode requires Python 3 and Tkinter plus `payload-dumper-go` on `PATH`.
+
+## Backend
+
+Backend project: [ssut/payload-dumper-go](https://github.com/ssut/payload-dumper-go), Apache License 2.0. It supports raw `payload.bin` and OTA ZIP inputs, listing partitions (`-l`), machine-readable listing (`-m`), selected partitions (`-p`), and output directories (`-o`).
+
+Known limitations inherited from the backend include unsupported `PUFFDIFF`, `ZUCCHINI`, and `LZ4DIFF_*` delta operations in affected partitions. Incremental/delta packages may require base images, and `xz` must be available. Read the backend's documentation before relying on extracted images for device flashing.
+
+## Status and validation
+
+This is an active implementation, not yet a claimed production release. CI checks Python compilation and unit tests. A version-tag build is responsible for making the AppImage and attaching a checksum, but the produced artifact still needs smoke testing on clean Ubuntu, Fedora, and Arch machines and with real full/incremental OTA samples before being considered release-ready.
 
 ## Reference projects
 
-- [payload-dumper-gui](https://github.com/rhythmcache/payload-dumper-gui) — C++/Dear ImGui desktop implementation and Rust `payload_dumper` backend. Its existing desktop front end is Windows-specific, so the Linux UI requires a Linux platform layer and backend integration.
-- [Payload-Dumper-Android](https://github.com/rajmani7584/Payload-Dumper-Android) — reference for progress, cancellation, ZIP handling, verification, diagnostics, and extraction workflow.
-
-These projects are references, not bundled code. Any code copied or adapted must follow its source project's license and attribution terms.
-
-## Planned layout
-
-```
-.
-├── app/                  # Linux desktop UI and application state
-├── backend/              # Payload extraction backend integration
-├── packaging/
-│   ├── AppDir/           # AppImage filesystem layout and desktop entry
-│   └── appimage/
-├── scripts/
-│   ├── build-linux.sh
-│   └── run-portable.sh
-├── tests/
-└── .github/workflows/    # CI and AppImage release builds
-```
-
-## Development status
-
-The Linux GUI and AppImage pipeline are being established. A release should not be considered ready until local `.bin` and `.zip` extraction, progress/cancellation, SHA-256 verification, and AppImage launch tests pass on clean Ubuntu, Fedora, and Arch environments.
+- [rhythmcache/payload-dumper-gui](https://github.com/rhythmcache/payload-dumper-gui)
+- [rajmani7584/Payload-Dumper-Android](https://github.com/rajmani7584/Payload-Dumper-Android)
