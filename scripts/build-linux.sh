@@ -15,7 +15,7 @@ if "$PYTHON" -c "import gi; gi.require_version('Gio', '2.0'); from gi.repository
   PYI_GIO_ARGS+=(--hidden-import=gi --hidden-import=gi.repository.Gio)
 fi
 "$PYTHON" -m PyInstaller --noconfirm --clean --onefile --windowed --name flashlab-gui --distpath "$WORK/pyinstaller-dist" --workpath "$WORK/pyinstaller-build" --specpath "$WORK" --paths src --hidden-import=payload_dumper --hidden-import=tkinter.ttk "${PYI_GIO_ARGS[@]}" --collect-all tkinter --collect-all tkinterdnd2 src/app.py
-install -m 0755 "$WORK/pyinstaller-dist/payload-dumper-gui" "$APPDIR/usr/bin/payload-dumper-gui-bin"
+install -m 0755 "$WORK/pyinstaller-dist/flashlab-gui" "$APPDIR/usr/bin/flashlab-gui-bin"
 BACKEND_ARCH="linux_amd64"; if [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then BACKEND_ARCH="linux_arm64"; fi
 BACKEND_ARCHIVE="payload-dumper-go_${BACKEND_VERSION}_${BACKEND_ARCH}.tar.gz"
 wget -q --show-progress "https://github.com/ssut/payload-dumper-go/releases/download/${BACKEND_VERSION}/${BACKEND_ARCHIVE}" -O "$WORK/$BACKEND_ARCHIVE"
@@ -38,22 +38,22 @@ if command -v ldd >/dev/null; then
     cp -L "$dep" "$APPDIR/opt/payload-dumper/lib/$(basename "$dep")"
   done
 fi
-cat > "$APPDIR/usr/bin/payload-dumper-gui" <<'LAUNCH'
+cat > "$APPDIR/usr/bin/flashlab-gui" <<'LAUNCH'
 #!/usr/bin/env bash
 set -euo pipefail
 HERE="$(cd -- "$(dirname -- "$0")/../.." && pwd)"
 export PATH="$HERE/opt/payload-dumper/bin:$PATH"
 export LD_LIBRARY_PATH="$HERE/opt/payload-dumper/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-exec "$HERE/usr/bin/payload-dumper-gui-bin" "$@"
+exec "$HERE/usr/bin/flashlab-gui-bin" "$@"
 LAUNCH
-chmod 0755 "$APPDIR/usr/bin/payload-dumper-gui" "$APPDIR/usr/bin/payload-dumper-gui-bin"
+chmod 0755 "$APPDIR/usr/bin/flashlab-gui" "$APPDIR/usr/bin/flashlab-gui-bin"
 cat > "$APPDIR/AppRun" <<'RUN'
 #!/usr/bin/env bash
 set -euo pipefail
 HERE="$(cd -- "$(dirname -- "$0")" && pwd)"
 export PATH="$HERE/opt/payload-dumper/bin:$HERE/usr/bin:$PATH"
 export LD_LIBRARY_PATH="$HERE/opt/payload-dumper/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-exec "$HERE/usr/bin/payload-dumper-gui" "$@"
+exec "$HERE/usr/bin/flashlab-gui" "$@"
 RUN
 chmod 0755 "$APPDIR/AppRun"
 cat > "$APPDIR/usr/share/applications/flashlab.desktop" <<'DESKTOP'
@@ -61,8 +61,8 @@ cat > "$APPDIR/usr/share/applications/flashlab.desktop" <<'DESKTOP'
 Type=Application
 Name=FlashLab
 Comment=Android firmware extraction and Fastboot flashing
-Exec=payload-dumper-gui
-Icon=payload-dumper
+Exec=flashlab-gui
+Icon=flashlab
 Categories=Utility;System;
 Terminal=false
 DESKTOP
