@@ -2,7 +2,7 @@
 """DroidLab Linux desktop UI."""
 from __future__ import annotations
 import os, queue, threading, tkinter as tk, shutil, re, shlex
-import subprocess
+import subprocess, webbrowser
 from tkinter import filedialog, messagebox, ttk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from pathlib import Path
@@ -13,8 +13,34 @@ class PayloadDumperApp(TkinterDnD.Tk):
     def __init__(self):
         super().__init__(); self.title(APP_NAME); self.geometry("1440x900"); self.minsize(1024,700); self.configure(bg="#111827")
         self.events=queue.Queue(); self.worker=None; self.cancel_event=threading.Event()
+        menu=tk.Menu(self)
+        help_menu=tk.Menu(menu, tearoff=False)
+        help_menu.add_command(label="About DroidLab", command=self._show_about)
+        menu.add_cascade(label="Help", menu=help_menu)
+        self.configure(menu=menu)
         self.source=tk.StringVar(); self.output=tk.StringVar(value=str(Path.home()/APP_NAME)); self.fingerprint=tk.BooleanVar(value=True); self.status=tk.StringVar(value="Ready")
         self.parts={}; self.part_vars={}; self._build(); self.after(100,self._poll_events)
+    def _show_about(self):
+        dialog = tk.Toplevel(self)
+        dialog.title("About DroidLab")
+        dialog.geometry("480x360")
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.configure(bg="#111827")
+        dialog.grab_set()
+        body = ttk.Frame(dialog, padding=24)
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, text="DroidLab", font=("Sans", 25, "bold")).pack(anchor="center", pady=(2, 4))
+        ttk.Label(body, text="Android firmware toolkit for Linux", style="Muted.TLabel").pack(anchor="center", pady=(0, 18))
+        ttk.Separator(body).pack(fill="x", pady=(0, 16))
+        ttk.Label(body, text="Created by", style="Muted.TLabel").pack(anchor="center")
+        ttk.Label(body, text="nightx24 (augztn)", font=("Sans", 16, "bold")).pack(anchor="center", pady=(3, 12))
+        link = ttk.Label(body, text="Instagram: @augztn", foreground="#60a5fa", cursor="hand2", font=("Sans", 12, "underline"))
+        link.pack(anchor="center", pady=(0, 12))
+        link.bind("<Button-1>", lambda _event: webbrowser.open("https://www.instagram.com/augztn/"))
+        ttk.Label(body, text="Payload inspection and extraction · Fastboot tools · ADB & OTA sideload", style="Muted.TLabel", wraplength=410, justify="center").pack(anchor="center", pady=(0, 16))
+        ttk.Button(body, text="Close", command=dialog.destroy).pack(anchor="center")
+
     def _build(self):
         s=ttk.Style(self)
         try:s.theme_use("clam")
