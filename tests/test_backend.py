@@ -35,7 +35,7 @@ class BackendTests(unittest.TestCase):
 
     def test_frozen_appimage_resolves_appdir_root(self):
         with patch("src.payload_dumper.sys.frozen", True, create=True):
-            with patch("src.payload_dumper.sys.executable", "/tmp/Payload.AppDir/usr/bin/payload-dumper-gui-bin"):
+            with patch("src.payload_dumper.sys.executable", "/tmp/Payload.AppDir/usr/bin/droidlab-gui-bin"):
                 self.assertEqual(_bundle_root(), Path("/tmp/Payload.AppDir"))
 
     def test_cli_lookup_does_not_claim_uninstalled_backend(self):
