@@ -1,6 +1,6 @@
-# Payload Dumper for Linux
+# FlashLab for Linux
 
-A Linux desktop GUI for inspecting and extracting Android OTA `payload.bin` files and OTA ZIP packages. Targets x86_64 AppImage builds for Ubuntu, Fedora, and Arch Linux.
+FlashLab is a Linux desktop Android firmware toolkit for inspecting and extracting OTA `payload.bin` files and OTA ZIP packages, with a guarded Fastboot image-flashing workflow. Targets x86_64 AppImage builds for Ubuntu, Fedora, and Arch Linux.
 
 ## Current implementation
 
@@ -9,7 +9,7 @@ A Linux desktop GUI for inspecting and extracting Android OTA `payload.bin` file
 - Extract all partitions or selected partitions.
 - Display backend output and provide cancellation by terminating the backend process.
 - Optional SHA-256 fingerprints for output files. These fingerprints are not a substitute for the OTA backend's own integrity checks.
-- AppImage build script that packages a frozen Python GUI plus the `payload-dumper-go` backend.
+- Fastboot & Flashing tab: drag/drop `.img` files, filename-based partition suggestions, Fastboot device detection, command preview, and explicit confirmation before flashing.\n- Flashing requires Android platform-tools (`fastboot`) installed on the host and available on `PATH`; it is not bundled.\n- AppImage build script packages the GUI plus the `payload-dumper-go` backend.
 
 ## Build locally
 
