@@ -20,7 +20,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         try:s.theme_use("clam")
         except tk.TclError:pass
         s.configure("TFrame",background="#111827"); s.configure("Panel.TFrame",background="#1f2937"); s.configure("TLabel",background="#111827",foreground="#e5e7eb",font=("Sans",13)); s.configure("Title.TLabel",font=("Sans",23,"bold"),foreground="#f9fafb"); s.configure("Muted.TLabel",foreground="#cbd5e1"); s.configure("TButton",padding=(14,10),font=("Sans",12)); s.configure("TCheckbutton",background="#1f2937",foreground="#f9fafb",font=("Sans",13)); s.configure("TEntry",padding=7,font=("Sans",12)); s.configure("TCombobox",padding=7,font=("Sans",12)); s.configure("Treeview",background="#0b1220",fieldbackground="#0b1220",foreground="#f1f5f9",rowheight=38,font=("Sans",12)); s.configure("Treeview.Heading",background="#374151",foreground="#ffffff",font=("Sans",12,"bold"),padding=(9,9)); s.map("Treeview",background=[("selected","#1d4ed8")],foreground=[("selected","#ffffff")])
-        notebook=ttk.Notebook(self); notebook.pack(fill="both",expand=True,padx=8,pady=8); root=ttk.Frame(notebook,padding=16); notebook.add(root,text="Payload Extractor"); flash_tab=ttk.Frame(notebook,padding=16); notebook.add(flash_tab,text="Fastboot & Flashing"); self._build_flash_tab(flash_tab); h=ttk.Frame(root); h.pack(fill="x",pady=(0,10))
+        notebook=ttk.Notebook(self); notebook.pack(fill="both",expand=True,padx=8,pady=8); root=ttk.Frame(notebook,padding=16); notebook.add(root,text="Payload Extractor"); flash_tab=ttk.Frame(notebook,padding=16); notebook.add(flash_tab,text="Fastboot & Flashing"); self._build_flash_tab(flash_tab); adb_tab=ttk.Frame(notebook,padding=16); notebook.add(adb_tab,text="ADB & Sideload"); self._build_adb_tab(adb_tab); h=ttk.Frame(root); h.pack(fill="x",pady=(0,10))
         ttk.Label(h,text=APP_NAME,style="Title.TLabel").pack(anchor="w"); ttk.Label(h,text="Android firmware toolkit · Linux desktop",style="Muted.TLabel").pack(anchor="w",pady=(3,0))
         src=ttk.Frame(root,style="Panel.TFrame",padding=10); src.pack(fill="x",pady=(0,7)); ttk.Label(src,text="INPUT FILE PATH — TYPE OR PASTE THE FULL PATH",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(src,style="Panel.TFrame"); row.pack(fill="x",pady=(6,0)); self.source_entry=ttk.Entry(row,textvariable=self.source); self.source_entry.pack(side="left",fill="x",expand=True,ipady=4); self.source_entry.bind("<Return>",lambda _event:self._apply_manual_source_path()); ttk.Button(row,text="Browse…",command=self._browse_source).pack(side="left",padx=(7,0)); actions=ttk.Frame(src,style="Panel.TFrame"); actions.pack(fill="x",pady=(7,0)); ttk.Button(actions,text="Use typed path",command=self._apply_manual_source_path).pack(side="left"); ttk.Button(actions,text="Inspect partitions",command=self._inspect).pack(side="left",padx=(7,0))
         out=ttk.Frame(root,style="Panel.TFrame",padding=10); out.pack(fill="x",pady=(0,7)); ttk.Label(out,text="OUTPUT DIRECTORY",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(out,style="Panel.TFrame"); row.pack(fill="x",pady=(5,0)); ttk.Entry(row,textvariable=self.output).pack(side="left",fill="x",expand=True,ipady=4); ttk.Button(row,text="Choose…",command=self._browse_output).pack(side="left",padx=(7,0))
@@ -110,6 +110,164 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.flash_image.trace_add("write", lambda *_: self._on_flash_image_changed())
         self.flash_partition.trace_add("write", lambda *_: self._update_flash_preview())
         self.fastboot_device.trace_add("write", lambda *_: self._update_flash_preview())
+
+    def _build_adb_tab(self, tab):
+        tab.columnconfigure(0, weight=1)
+        tab.rowconfigure(3, weight=1)
+        ttk.Label(tab, text="ADB & Sideload", font=("Sans", 20, "bold")).grid(row=0, column=0, sticky="w", pady=(0, 8))
+        ttk.Label(tab, text="Reboot, collect logs and diagnostics, run device shell commands, or sideload an OTA ZIP from recovery.", style="Muted.TLabel", wraplength=1100).grid(row=1, column=0, sticky="w", pady=(0, 12))
+        device=ttk.Frame(tab,style="Panel.TFrame",padding=10); device.grid(row=2,column=0,sticky="ew",pady=(0,10))
+        ttk.Label(device,text="ADB DEVICE",background="#1f2937",foreground="#93c5fd").pack(anchor="w")
+        row=ttk.Frame(device,style="Panel.TFrame"); row.pack(fill="x",pady=(5,0))
+        self.adb_device=tk.StringVar(); self.adb_device_combo=ttk.Combobox(row,textvariable=self.adb_device,state="readonly"); self.adb_device_combo.pack(side="left",fill="x",expand=True)
+        ttk.Button(row,text="Refresh devices",command=self._refresh_adb_devices).pack(side="left",padx=(8,0))
+        self.adb_device_status=tk.StringVar(value="Connect device or enter recovery sideload mode, then refresh.")
+        ttk.Label(device,textvariable=self.adb_device_status,background="#1f2937",foreground="#cbd5e1",wraplength=1000).pack(anchor="w",pady=(5,0))
+        lower=ttk.Frame(tab); lower.grid(row=3,column=0,sticky="nsew"); lower.columnconfigure(0,weight=1); lower.rowconfigure(2,weight=1)
+        actions=ttk.Frame(lower); actions.grid(row=0,column=0,sticky="ew",pady=(0,10))
+        power=ttk.Frame(actions,style="Panel.TFrame",padding=10); power.pack(side="left",fill="both",expand=True,padx=(0,8))
+        ttk.Label(power,text="POWER & REBOOTING",background="#1f2937",foreground="#93c5fd").pack(anchor="w",pady=(0,6))
+        row=ttk.Frame(power,style="Panel.TFrame"); row.pack(fill="x")
+        ttk.Button(row,text="Reboot",command=lambda:self._adb_reboot("")).pack(side="left",padx=(0,4))
+        ttk.Button(row,text="Bootloader",command=lambda:self._adb_reboot("bootloader")).pack(side="left",padx=4)
+        ttk.Button(row,text="Recovery",command=lambda:self._adb_reboot("recovery")).pack(side="left",padx=4)
+        diag=ttk.Frame(actions,style="Panel.TFrame",padding=10); diag.pack(side="left",fill="both",expand=True)
+        ttk.Label(diag,text="LOGS & DIAGNOSTICS",background="#1f2937",foreground="#93c5fd").pack(anchor="w",pady=(0,6))
+        row=ttk.Frame(diag,style="Panel.TFrame"); row.pack(fill="x")
+        ttk.Button(row,text="Live logcat",command=self._start_adb_logcat).pack(side="left",padx=(0,4))
+        ttk.Button(row,text="Save logcat…",command=self._save_adb_logcat).pack(side="left",padx=4)
+        ttk.Button(row,text="Bugreport ZIP…",command=self._create_adb_bugreport).pack(side="left",padx=4)
+        side=ttk.Frame(lower,style="Panel.TFrame",padding=10); side.grid(row=1,column=0,sticky="ew",pady=(0,10))
+        ttk.Label(side,text="ADB SIDELOAD — INSTALL OTA ZIP",background="#1f2937",foreground="#93c5fd",font=("Sans",12,"bold")).pack(anchor="w")
+        row=ttk.Frame(side,style="Panel.TFrame"); row.pack(fill="x",pady=(5,0))
+        self.sideload_file=tk.StringVar(); ttk.Entry(row,textvariable=self.sideload_file).pack(side="left",fill="x",expand=True,ipady=4)
+        ttk.Button(row,text="Browse ZIP…",command=self._browse_sideload_zip).pack(side="left",padx=(7,0))
+        ttk.Button(row,text="Sideload ZIP…",command=self._run_adb_sideload).pack(side="left",padx=(7,0))
+        ttk.Label(side,text="First boot to recovery and choose Apply update from ADB. Select the device marked [sideload]. Only install a ZIP made for your exact device.",background="#1f2937",foreground="#cbd5e1",wraplength=1100).pack(anchor="w",pady=(5,0))
+        shell=ttk.Frame(lower,style="Panel.TFrame",padding=10); shell.grid(row=2,column=0,sticky="nsew"); shell.columnconfigure(0,weight=1); shell.rowconfigure(2,weight=1)
+        ttk.Label(shell,text="ADVANCED DEVICE SHELL",background="#1f2937",foreground="#93c5fd",font=("Sans",12,"bold")).grid(row=0,column=0,sticky="w")
+        row=ttk.Frame(shell,style="Panel.TFrame"); row.grid(row=1,column=0,sticky="ew",pady=(5,7))
+        self.adb_shell_command=tk.StringVar(value="dumpsys battery"); ttk.Entry(row,textvariable=self.adb_shell_command).pack(side="left",fill="x",expand=True,ipady=4)
+        ttk.Button(row,text="Run shell command",command=self._run_adb_shell).pack(side="left",padx=(7,0))
+        self.adb_output=tk.Text(shell,height=7,bg="#0b1220",fg="#d1d5db",insertbackground="white",relief="flat",wrap="word",font=("Monospace",10)); self.adb_output.grid(row=2,column=0,sticky="nsew")
+        self.adb_output.insert("end","Select a device, then run dumpsys battery or another trusted shell command.\n"); self.adb_output.configure(state="disabled")
+        self.adb_log_process=None; self.adb_log_window=None; self.adb_log_text=None
+
+    def _refresh_adb_devices(self):
+        binary=shutil.which("adb")
+        if not binary: messagebox.showerror("ADB not found","Install Android SDK Platform-Tools and ensure adb is on PATH."); return
+        try: result=subprocess.run([binary,"devices","-l"],capture_output=True,text=True,timeout=10,check=False)
+        except (OSError,subprocess.TimeoutExpired) as exc: messagebox.showerror("ADB scan failed",str(exc)); return
+        targets={}
+        for line in result.stdout.splitlines()[1:]:
+            fields=line.split()
+            if len(fields)>=2 and fields[1] in ("device","sideload","recovery","unauthorized","offline"):
+                label=fields[0]+" ["+fields[1]+"]"; targets[label]=(fields[0],fields[1])
+        self._adb_targets=targets; labels=list(targets); self.adb_device_combo["values"]=labels
+        self.adb_device.set(labels[0] if len(labels)==1 else (self.adb_device.get() if self.adb_device.get() in targets else ""))
+        self.adb_device_status.set(result.stdout.strip() or "No devices reported by adb.")
+        self._append("ADB scan: "+(", ".join(labels) if labels else "no devices found"))
+
+    def _adb_require(self, states=("device",)):
+        binary=shutil.which("adb")
+        if not binary: messagebox.showerror("ADB not found","Install Android SDK Platform-Tools and ensure adb is on PATH."); return None
+        target=getattr(self,"_adb_targets",{}).get(self.adb_device.get())
+        if not target: messagebox.showwarning("Select device","Refresh devices and select a device."); return None
+        serial,state=target
+        if state not in states: messagebox.showwarning("Device not ready","Device state is "+state+". Expected: "+", ".join(states)+"."); return None
+        return binary,serial
+
+    def _adb_reboot(self, mode):
+        selected=self._adb_require(("device","recovery"))
+        if not selected:return
+        binary,serial=selected; label=mode or "normal"; command=[binary,"-s",serial,"reboot"]+([mode] if mode else [])
+        if not messagebox.askyesno("Confirm reboot","Reboot "+serial+" into "+label+" mode?"):return
+        try:
+            result=subprocess.run(command,capture_output=True,text=True,timeout=20,check=False); output=(result.stdout+"\n"+result.stderr).strip()
+            self._append("ADB reboot "+label+": "+(output or "exit status "+str(result.returncode)))
+            if result.returncode:messagebox.showerror("ADB reboot failed",output or "adb exit status "+str(result.returncode))
+            else:self.adb_device_status.set("Reboot command sent. Refresh after the device changes mode.")
+        except (OSError,subprocess.TimeoutExpired) as exc:messagebox.showerror("ADB reboot failed",str(exc))
+
+    def _browse_sideload_zip(self):
+        path=filedialog.askopenfilename(title="Choose OTA ZIP to sideload",filetypes=[("OTA ZIP","*.zip"),("All files","*")])
+        if path:self.sideload_file.set(path)
+
+    def _run_adb_sideload(self):
+        selected=self._adb_require(("sideload",))
+        if not selected:return
+        binary,serial=selected; package=Path(self.sideload_file.get().strip().strip(chr(34)).strip(chr(39))).expanduser()
+        if not package.is_file() or package.suffix.lower()!=".zip":messagebox.showerror("Invalid update ZIP","Choose an existing .zip update package.");return
+        command=[binary,"-s",serial,"sideload",str(package.resolve())]
+        detail="Device: "+serial+"\nPackage: "+str(package.resolve())+"\nCommand: "+" ".join(shlex.quote(x) for x in command)+"\n\nOnly install a package intended for this exact device. Continue?"
+        if not messagebox.askyesno("Confirm ADB sideload",detail,icon="warning"):return
+        self._append("Starting ADB sideload: "+" ".join(shlex.quote(x) for x in command)); self.adb_device_status.set("Sideload in progress…")
+        threading.Thread(target=self._adb_task,args=(command,1800,"sideload"),daemon=True).start()
+
+    def _adb_task(self, command, timeout, kind):
+        try:
+            result=subprocess.run(command,capture_output=True,text=True,timeout=timeout,check=False)
+            output=(result.stdout+"\n"+result.stderr).strip() or "Exit status: "+str(result.returncode)
+            self.events.put(("adb_result",(kind,result.returncode,output)))
+        except (OSError,subprocess.TimeoutExpired) as exc:self.events.put(("adb_result",(kind,-1,str(exc))))
+
+    def _run_adb_shell(self):
+        selected=self._adb_require(("device",))
+        if not selected:return
+        text=self.adb_shell_command.get().strip()
+        if not text:messagebox.showwarning("Shell command required","Enter a command such as dumpsys battery.");return
+        binary,serial=selected; self._append("Running adb shell command on "+serial)
+        threading.Thread(target=self._adb_task,args=([binary,"-s",serial,"shell",text],90,"shell"),daemon=True).start()
+
+    def _append_adb_output(self, text):
+        self.adb_output.configure(state="normal"); self.adb_output.insert("end",text+"\n"); self.adb_output.see("end"); self.adb_output.configure(state="disabled")
+
+    def _start_adb_logcat(self):
+        selected=self._adb_require(("device",))
+        if not selected:return
+        if self.adb_log_process and self.adb_log_process.poll() is None:messagebox.showinfo("Logcat running","Stop the current logcat window first.");return
+        binary,serial=selected; window=tk.Toplevel(self); window.title("DroidLab Live Logcat - "+serial); window.geometry("900x600"); window.configure(bg="#111827")
+        text=tk.Text(window,bg="#0b1220",fg="#d1d5db",wrap="none",font=("Monospace",10)); text.pack(fill="both",expand=True,padx=8,pady=8)
+        self.adb_log_window,self.adb_log_text=window,text
+        try:self.adb_log_process=subprocess.Popen([binary,"-s",serial,"logcat"],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,bufsize=1)
+        except OSError as exc:window.destroy(); self.adb_log_window=self.adb_log_text=None; messagebox.showerror("Logcat failed",str(exc)); return
+        ttk.Button(window,text="Stop logcat",command=self._stop_adb_logcat).pack(pady=(0,8))
+        def reader():
+            process=self.adb_log_process
+            try:
+                if process.stdout:
+                    for line in process.stdout:self.events.put(("adb_log_line",line.rstrip("\n")))
+            finally:self.events.put(("adb_log_end",None))
+        threading.Thread(target=reader,daemon=True).start(); window.protocol("WM_DELETE_WINDOW",self._stop_adb_logcat)
+
+    def _stop_adb_logcat(self):
+        if self.adb_log_process and self.adb_log_process.poll() is None:self.adb_log_process.terminate()
+        self.adb_log_process=None
+        if self.adb_log_window and self.adb_log_window.winfo_exists():self.adb_log_window.destroy()
+        self.adb_log_window=self.adb_log_text=None
+
+    def _save_adb_logcat(self):
+        selected=self._adb_require(("device",))
+        if not selected:return
+        path=filedialog.asksaveasfilename(title="Save Android logcat",defaultextension=".txt",initialfile="logs.txt",filetypes=[("Text files","*.txt"),("All files","*")])
+        if not path:return
+        binary,serial=selected
+        try:
+            with open(path,"w",encoding="utf-8") as output:
+                result=subprocess.run([binary,"-s",serial,"logcat"],stdout=output,stderr=subprocess.PIPE,text=True,timeout=3600,check=False)
+            if result.returncode:messagebox.showerror("Save logcat failed",result.stderr or "adb exit status "+str(result.returncode))
+            else:messagebox.showinfo("Logcat saved","Saved logcat to:\n"+path)
+        except subprocess.TimeoutExpired:messagebox.showinfo("Logcat capture stopped","One-hour capture limit reached; partial output saved to:\n"+path)
+        except OSError as exc:messagebox.showerror("Save logcat failed",str(exc))
+
+    def _create_adb_bugreport(self):
+        selected=self._adb_require(("device",))
+        if not selected:return
+        path=filedialog.asksaveasfilename(title="Save Android bugreport",defaultextension=".zip",initialfile="bugreport.zip",filetypes=[("ZIP archive","*.zip"),("All files","*")])
+        if not path:return
+        binary,serial=selected
+        if not messagebox.askyesno("Create bugreport","The report may include device identifiers, logs, and app activity.\nSave diagnostics from "+serial+" to:\n"+path+"?",icon="warning"):return
+        threading.Thread(target=self._adb_task,args=([binary,"-s",serial,"bugreport",path],600,"bugreport"),daemon=True).start()
 
     def _on_flash_image_changed(self):
         path = Path(self.flash_image.get().strip().strip(chr(34)).strip(chr(39)))
@@ -364,6 +522,19 @@ class PayloadDumperApp(TkinterDnD.Tk):
             while True:
                 kind,payload=self.events.get_nowait()
                 if kind=="log":self._append(payload)
+                elif kind=="adb_log_line":
+                    if self.adb_log_text and self.adb_log_window and self.adb_log_window.winfo_exists():
+                        self.adb_log_text.insert("end",payload+"\n"); self.adb_log_text.see("end")
+                elif kind=="adb_result":
+                    kind_name,code,output=payload
+                    self._append("ADB "+kind_name+" result:\n"+output)
+                    if kind_name=="shell":self._append_adb_output(output)
+                    elif kind_name=="bugreport":
+                        if code==0:messagebox.showinfo("Bugreport complete","Saved bugreport to the selected path.\n"+output)
+                        else:messagebox.showerror("Bugreport failed",output)
+                    elif kind_name=="sideload":
+                        if code==0:messagebox.showinfo("Sideload complete","ADB reported that the sideload command completed.")
+                        else:messagebox.showerror("Sideload failed",output)
                 elif kind=="parts":self._load_parts(payload)
                 elif kind=="info_done":self._busy(False);self.status.set(payload)
                 elif kind=="done":self._busy(False);self.status.set(payload);messagebox.showinfo("Extraction finished",payload)
