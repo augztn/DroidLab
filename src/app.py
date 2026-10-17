@@ -3,9 +3,10 @@
 from __future__ import annotations
 import queue, threading, tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from tkinterdnd2 import DND_FILES, TkinterDnD
 from pathlib import Path
 from payload_dumper import BackendError, extract, inspect_source, sha256_file
-class PayloadDumperApp(tk.Tk):
+class PayloadDumperApp(TkinterDnD.Tk):
     def __init__(self):
         super().__init__(); self.title("Payload Dumper"); self.geometry("1040x760"); self.minsize(800,600); self.configure(bg="#111827")
         self.events=queue.Queue(); self.worker=None; self.cancel_event=threading.Event()
@@ -18,13 +19,43 @@ class PayloadDumperApp(tk.Tk):
         s.configure("TFrame",background="#111827"); s.configure("Panel.TFrame",background="#1f2937"); s.configure("TLabel",background="#111827",foreground="#e5e7eb",font=("Sans",10)); s.configure("Title.TLabel",font=("Sans",22,"bold"),foreground="#f9fafb"); s.configure("Muted.TLabel",foreground="#9ca3af"); s.configure("TButton",padding=(10,6)); s.configure("Treeview",background="#111827",fieldbackground="#111827",foreground="#e5e7eb",rowheight=27); s.configure("Treeview.Heading",background="#374151",foreground="#f9fafb")
         root=ttk.Frame(self,padding=20); root.pack(fill="both",expand=True); h=ttk.Frame(root); h.pack(fill="x",pady=(0,14))
         ttk.Label(h,text="Payload Dumper",style="Title.TLabel").pack(anchor="w"); ttk.Label(h,text="Android OTA partition extractor · Linux desktop",style="Muted.TLabel").pack(anchor="w",pady=(3,0))
-        src=ttk.Frame(root,style="Panel.TFrame",padding=12); src.pack(fill="x",pady=(0,10)); ttk.Label(src,text="SOURCE FILE",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(src,style="Panel.TFrame"); row.pack(fill="x",pady=(6,0)); ttk.Entry(row,textvariable=self.source).pack(side="left",fill="x",expand=True,ipady=4); ttk.Button(row,text="Browse…",command=self._browse_source).pack(side="left",padx=(7,0)); ttk.Button(row,text="Inspect partitions",command=self._inspect).pack(side="left",padx=(7,0))
+        src=ttk.Frame(root,style="Panel.TFrame",padding=12); src.pack(fill="x",pady=(0,10)); ttk.Label(src,text="SOURCE FILE",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(src,style="Panel.TFrame"); row.pack(fill="x",pady=(6,0)); self.source_entry=ttk.Entry(row,textvariable=self.source); self.source_entry.pack(side="left",fill="x",expand=True,ipady=4); ttk.Button(row,text="Browse…",command=self._browse_source).pack(side="left",padx=(7,0)); ttk.Button(row,text="Inspect partitions",command=self._inspect).pack(side="left",padx=(7,0))
         out=ttk.Frame(root,style="Panel.TFrame",padding=12); out.pack(fill="x",pady=(0,10)); ttk.Label(out,text="OUTPUT DIRECTORY",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(out,style="Panel.TFrame"); row.pack(fill="x",pady=(6,0)); ttk.Entry(row,textvariable=self.output).pack(side="left",fill="x",expand=True,ipady=4); ttk.Button(row,text="Choose…",command=self._browse_output).pack(side="left",padx=(7,0))
         middle=ttk.Frame(root); middle.pack(fill="both",expand=True,pady=(0,10)); panel=ttk.Frame(middle,style="Panel.TFrame",padding=10); panel.pack(side="left",fill="both",expand=True,padx=(0,8)); ttk.Label(panel,text="PARTITIONS (no selection = all)",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); actions=ttk.Frame(panel,style="Panel.TFrame"); actions.pack(fill="x",pady=5); ttk.Button(actions,text="Select all",command=lambda:self._select_all(True)).pack(side="left"); ttk.Button(actions,text="Select none",command=lambda:self._select_all(False)).pack(side="left",padx=5)
         self.tree=ttk.Treeview(panel,columns=("size",),show="tree headings",selectmode="none"); self.tree.heading("#0",text="Partition"); self.tree.heading("size",text="Size"); self.tree.column("#0",width=190); self.tree.column("size",width=90,anchor="e",stretch=False); self.tree.pack(fill="both",expand=True); self.tree.bind("<Button-1>",self._toggle)
         side=ttk.Frame(middle,style="Panel.TFrame",padding=12); side.pack(side="right",fill="y"); ttk.Label(side,text="OPTIONS",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); ttk.Checkbutton(side,text="Generate SHA-256\nfingerprints",variable=self.fingerprint).pack(anchor="w",pady=(12,4)); ttk.Label(side,text="Fingerprints are separate\nfrom the backend’s OTA\nverification.",background="#1f2937",foreground="#9ca3af",justify="left").pack(anchor="w",pady=8); self.start_button=ttk.Button(side,text="Extract payload",command=self._start); self.start_button.pack(fill="x",pady=(8,5)); self.cancel_button=ttk.Button(side,text="Cancel",command=self._cancel,state="disabled"); self.cancel_button.pack(fill="x")
         logbox=ttk.Frame(root,style="Panel.TFrame",padding=10); logbox.pack(fill="both",expand=True); ttk.Label(logbox,text="ACTIVITY LOG",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); self.log=tk.Text(logbox,bg="#0b1220",fg="#d1d5db",insertbackground="white",relief="flat",wrap="word",font=("Monospace",9),height=7); self.log.pack(fill="both",expand=True,pady=6); self.log.configure(state="disabled"); self.progress=ttk.Progressbar(logbox,mode="indeterminate"); self.progress.pack(fill="x"); ttk.Label(root,textvariable=self.status,style="Muted.TLabel").pack(anchor="w",pady=(7,0))
-        self._append("Select a payload.bin or OTA .zip file. Inspect to select individual partitions."); self._append("Backend: payload-dumper-go (Apache-2.0). Some delta OTA operations are unsupported.")
+        self._enable_drop(src); self._enable_drop(self.source_entry); self._enable_drop(root); self._append("Drop payload.bin or an OTA .zip onto the source area, or use Browse. Inspect to select individual partitions."); self._append("Backend: payload-dumper-go (Apache-2.0). Some delta OTA operations are unsupported.")
+    def _enable_drop(self, widget):
+        """Allow files to be dropped onto the main window and source controls."""
+        try:
+            widget.drop_target_register(DND_FILES)
+            widget.dnd_bind("<<Drop>>", self._drop_source)
+        except (tk.TclError, AttributeError):
+            # Keep the regular file picker usable if drag-and-drop is unavailable.
+            pass
+    def _drop_source(self, event):
+        try:
+            paths = [Path(p) for p in self.tk.splitlist(event.data)]
+        except (tk.TclError, TypeError):
+            self._append("Could not read the dropped file path. Use Browse to select it.")
+            return "break"
+        candidates = [p for p in paths if p.is_file() and p.suffix.lower() in (".bin", ".zip")]
+        if not candidates:
+            self.status.set("Unsupported dropped file")
+            self._append("Drop a valid payload .bin or OTA .zip file.")
+            messagebox.showwarning("Unsupported file", "Drop a payload .bin or Android OTA .zip file.")
+            return "break"
+        # Prefer payload.bin when several files are dropped together.
+        chosen = next((p for p in candidates if p.name.lower() == "payload.bin"), candidates[0])
+        self.source.set(str(chosen))
+        self.parts.clear()
+        self.part_vars.clear()
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        self.status.set(f"Selected: {chosen.name}")
+        self._append(f"Selected by drag and drop: {chosen}")
+        return "break"
     def _append(self,msg):self.log.configure(state="normal"); self.log.insert("end",str(msg)+"\n"); self.log.see("end"); self.log.configure(state="disabled")
     def _busy(self,value):self.start_button.configure(state="disabled" if value else "normal"); self.cancel_button.configure(state="normal" if value else "disabled"); self.progress.start(12) if value else self.progress.stop()
     def _browse_source(self):
