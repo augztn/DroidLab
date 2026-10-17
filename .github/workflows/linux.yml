@@ -44,7 +44,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-tk xz-utils wget file libfuse2 xvfb
-          python -m pip install --upgrade pyinstaller
+          python -m pip install --upgrade pyinstaller "tkinterdnd2>=0.4.3,<1"
           wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O /tmp/appimagetool
           chmod +x /tmp/appimagetool
           sudo install /tmp/appimagetool /usr/local/bin/appimagetool
