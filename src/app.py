@@ -122,7 +122,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
 
         box = ttk.Frame(controls, style="Panel.TFrame", padding=14)
         box.grid(row=0, column=0, sticky="ew", pady=(0, 10))
-        ttk.Label(box, text="IMAGE FILE (.img)", background="#1f2937", foreground="#93c5fd").pack(anchor="w")
+        ttk.Label(box, text="IMAGE FILE", background="#1f2937", foreground="#93c5fd", font=("Sans", 10, "bold")).pack(anchor="w")
         row = ttk.Frame(box, style="Panel.TFrame")
         row.pack(fill="x", pady=(6, 0))
         self.flash_image = tk.StringVar()
@@ -135,7 +135,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
 
         device = ttk.Frame(controls, style="Panel.TFrame", padding=14)
         device.grid(row=1, column=0, sticky="ew", pady=(0, 10))
-        ttk.Label(device, text="FASTBOOT DEVICE", background="#1f2937", foreground="#93c5fd").pack(anchor="w")
+        ttk.Label(device, text="FASTBOOT DEVICE", background="#1f2937", foreground="#93c5fd", font=("Sans", 10, "bold")).pack(anchor="w")
         row = ttk.Frame(device, style="Panel.TFrame")
         row.pack(fill="x", pady=(6, 0))
         self.fastboot_device = tk.StringVar()
@@ -153,15 +153,15 @@ class PayloadDumperApp(TkinterDnD.Tk):
 
         preview = ttk.Frame(controls, style="Panel.TFrame", padding=14)
         preview.grid(row=2, column=0, sticky="ew", pady=(0, 10))
-        ttk.Label(preview, text="COMMAND PREVIEW", background="#1f2937", foreground="#93c5fd").pack(anchor="w")
+        ttk.Label(preview, text="COMMAND PREVIEW", background="#1f2937", foreground="#93c5fd", font=("Sans", 10, "bold")).pack(anchor="w")
         self.flash_command = tk.StringVar(value="Select an image and Fastboot device to preview the command.")
         ttk.Label(preview, textvariable=self.flash_command, background="#0b1220", foreground="#f1f5f9", padding=10, wraplength=650, justify="left").pack(fill="x", pady=(6, 0))
 
         ttk.Label(
             controls,
-            text="WARNING: An incompatible image or wrong partition can prevent Android from booting. Filename matching is only a suggestion. Verify device compatibility and have a recovery plan.",
-            foreground="#fecaca", background="#1f2937", wraplength=900, justify="left",
-            font=("Sans", 11), padding=12,
+            text="FLASHING RISK  ·  An incompatible image or incorrect partition can stop Android from booting. Confirm the image matches your exact device and verify the target partition before flashing.",
+            foreground="#fecaca", background="#2a1d27", wraplength=900, justify="left",
+            font=("Sans", 10), padding=12,
         ).grid(row=3, column=0, sticky="ew", pady=(2, 12))
         row = ttk.Frame(controls)
         row.grid(row=4, column=0, sticky="w")
@@ -170,9 +170,9 @@ class PayloadDumperApp(TkinterDnD.Tk):
 
         # Executable destructive maintenance actions; each action requires explicit confirmation.
         reference = ttk.Frame(tab, style="Panel.TFrame", padding=14)
-        reference.grid(row=2, column=1, sticky="new")
+        reference.grid(row=2, column=1, sticky="nsew")
         ttk.Label(reference, text="ERASING & FORMATTING", background="#1f2937", foreground="#fb923c", font=("Sans", 13, "bold")).pack(anchor="w")
-        ttk.Label(reference, text="Select a Fastboot device on the left, then choose an operation. These actions can erase personal data.", background="#1f2937", foreground="#fca5a5", justify="left", wraplength=520, font=("Sans", 11)).pack(anchor="w", pady=(8, 12))
+        ttk.Label(reference, text="Destructive actions permanently remove data. Confirm the selected device before continuing.", background="#1f2937", foreground="#fecaca", justify="left", wraplength=440, font=("Sans", 11)).pack(anchor="w", pady=(8, 12))
         ttk.Button(reference, text="Erase cache", command=lambda: self._run_fastboot_maintenance("erase", "cache")).pack(fill="x", pady=3)
         ttk.Button(reference, text="Erase userdata", command=lambda: self._run_fastboot_maintenance("erase", "userdata")).pack(fill="x", pady=3)
         ttk.Button(reference, text="Wipe data (fastboot -w)", command=lambda: self._run_fastboot_maintenance("-w")).pack(fill="x", pady=3)
