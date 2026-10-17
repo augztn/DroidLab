@@ -40,7 +40,7 @@ jobs:
           chmod +x /tmp/appimagetool
           sudo install /tmp/appimagetool /usr/local/bin/appimagetool
       - name: Build AppImage
-        run: VERSION="${GITHUB_REF_NAME#v}" scripts/build-linux.sh
+        run: VERSION="${GITHUB_REF_NAME#v}" bash scripts/build-linux.sh
       - name: Generate checksum
         run: cd dist && sha256sum *.AppImage > SHA256SUMS
       - name: Publish release assets
