@@ -309,11 +309,10 @@ class PayloadDumperApp(TkinterDnD.Tk):
         if not binary:
             messagebox.showerror("Fastboot not found", "Install Android SDK Platform-Tools and ensure fastboot is on PATH.")
             return
-        selected = getattr(self, "_fastboot_targets", {}).get(self.fastboot_device.get())
-        if not selected:
+        serial = self.fastboot_device.get().strip()
+        if not serial or serial not in self.device_combo["values"]:
             messagebox.showwarning("Select Fastboot device", "Click Refresh devices and select a connected Fastboot device first.")
             return
-        serial = selected[0] if isinstance(selected, (tuple, list)) else selected
         if operation == "-w":
             command = [binary, "-s", serial, "-w"]
             label = "Wipe user data and cache (fastboot -w)"
