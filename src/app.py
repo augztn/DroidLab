@@ -214,8 +214,131 @@ class PayloadDumperApp(TkinterDnD.Tk):
         return "break"
 
     def _browse_sideload_zip(self):
-        path=filedialog.askopenfilename(title="Choose OTA ZIP to sideload",filetypes=[("OTA ZIP","*.zip"),("All files","*")])
-        if path:self.sideload_file.set(path)
+        """Open a media-aware ZIP picker rooted at the user's home, not /."""
+        dialog = tk.Toplevel(self)
+        dialog.title("Choose OTA ZIP to sideload")
+        dialog.geometry("900x620")
+        dialog.minsize(700, 460)
+        dialog.transient(self)
+        dialog.grab_set()
+        dialog.columnconfigure(0, weight=1)
+        dialog.rowconfigure(3, weight=1)
+
+        ttk.Label(dialog, text="Choose an OTA ZIP", font=("Sans", 16, "bold")).grid(row=0, column=0, sticky="w", padx=12, pady=(12, 6))
+        shortcuts = ttk.Frame(dialog)
+        shortcuts.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 8))
+        ttk.Label(shortcuts, text="Media / mount drive:").pack(side="left", padx=(0, 6))
+        drive_var = tk.StringVar()
+        drive_combo = ttk.Combobox(shortcuts, textvariable=drive_var, state="readonly", width=42)
+        drive_combo.pack(side="left", fill="x", expand=True)
+
+        path_row = ttk.Frame(dialog)
+        path_row.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 8))
+        path_var = tk.StringVar(value=str(Path.home()))
+        path_entry = ttk.Entry(path_row, textvariable=path_var)
+        path_entry.pack(side="left", fill="x", expand=True, ipady=4)
+        file_list = tk.Listbox(dialog, bg="#0b1220", fg="#e5e7eb", selectbackground="#2563eb", font=("Sans", 12), activestyle="dotbox")
+        file_list.grid(row=3, column=0, sticky="nsew", padx=12, pady=(0, 8))
+        scrollbar = ttk.Scrollbar(dialog, orient="vertical", command=file_list.yview)
+        scrollbar.grid(row=3, column=1, sticky="ns", pady=(0, 8))
+        file_list.configure(yscrollcommand=scrollbar.set)
+        footer = ttk.Frame(dialog)
+        footer.grid(row=4, column=0, sticky="ew", padx=12, pady=(0, 12))
+        selected_var = tk.StringVar()
+        ttk.Label(footer, textvariable=selected_var).pack(side="left", fill="x", expand=True)
+        ttk.Button(footer, text="Go to folder", command=lambda: populate(path_var.get())).pack(side="left", padx=4)
+        ttk.Button(footer, text="Up", command=lambda: populate(str(Path(path_var.get()).expanduser().parent))).pack(side="left", padx=4)
+        ttk.Button(footer, text="Refresh mounts", command=lambda: load_drives()).pack(side="left", padx=4)
+        ttk.Button(footer, text="Cancel", command=dialog.destroy).pack(side="right", padx=(4, 0))
+        ttk.Button(footer, text="Select ZIP", command=lambda: accept_selected()).pack(side="right", padx=4)
+
+        entries = []
+        def load_drives():
+            choices = [("Home folder", str(Path.home()))]
+            user = os.environ.get("USER", Path.home().name)
+            roots = [Path("/run/media") / user, Path("/media") / user, Path("/mnt"), Path("/media"), Path("/run/media")]
+            for root in roots:
+                try:
+                    if root.is_dir():
+                        if root in (Path("/media"), Path("/run/media")):
+                            for child in root.iterdir():
+                                if child.is_dir():
+                                    choices.append((f"Mounted: {child.name}", str(child)))
+                        else:
+                            for child in root.iterdir():
+                                if child.is_dir():
+                                    choices.append((f"Mounted: {child.name}", str(child)))
+                except OSError:
+                    pass
+            for label, path in getattr(self, "_storage_locations", []):
+                choices.append((label, path))
+            unique = []
+            seen = set()
+            for label, path in choices:
+                try:
+                    p = str(Path(path).expanduser().resolve())
+                except OSError:
+                    continue
+                if p not in seen and Path(p).is_dir() and os.access(p, os.R_OK | os.X_OK):
+                    seen.add(p)
+                    unique.append((label, p))
+            drive_choices[:] = unique
+            drive_combo["values"] = [f"{label} — {path}" for label, path in unique]
+            if unique and not drive_var.get():
+                drive_var.set(drive_combo["values"][0])
+
+        def on_drive_selected(_event=None):
+            idx = drive_combo.current()
+            if 0 <= idx < len(drive_choices):
+                populate(drive_choices[idx][1])
+
+        def populate(directory):
+            nonlocal entries
+            try:
+                folder = Path(directory).expanduser().resolve()
+                if not folder.is_dir():
+                    raise NotADirectoryError(str(folder))
+                items = sorted(folder.iterdir(), key=lambda p: (not p.is_dir(), p.name.casefold()))
+                entries = [p for p in items if (p.is_dir() or (p.is_file() and p.suffix.lower() == ".zip"))]
+            except (OSError, RuntimeError) as exc:
+                messagebox.showerror("Cannot open folder", str(exc), parent=dialog)
+                return
+            path_var.set(str(folder))
+            file_list.delete(0, "end")
+            for p in entries:
+                file_list.insert("end", ("📁 " if p.is_dir() else "📦 ") + p.name)
+            selected_var.set(f"{len(entries)} folders / ZIP files")
+            try:
+                for idx, (_label, drive_path) in enumerate(drive_choices):
+                    if Path(drive_path).resolve() == folder:
+                        drive_combo.current(idx)
+                        break
+            except (OSError, RuntimeError):
+                pass
+
+        def accept_selected():
+            selection = file_list.curselection()
+            if not selection:
+                messagebox.showwarning("Select ZIP", "Select an OTA .zip file from the list.", parent=dialog)
+                return
+            chosen = entries[selection[0]]
+            if chosen.is_dir():
+                populate(chosen)
+                return
+            if chosen.suffix.lower() != ".zip":
+                messagebox.showwarning("OTA ZIP required", "Choose a .zip update package.", parent=dialog)
+                return
+            self.sideload_file.set(str(chosen.resolve()))
+            self.adb_device_status.set("OTA ZIP selected: " + chosen.name)
+            self._append("OTA ZIP selected for sideload: " + str(chosen.resolve()))
+            dialog.destroy()
+
+        drive_choices = []
+        drive_combo.bind("<<ComboboxSelected>>", on_drive_selected)
+        file_list.bind("<Double-Button-1>", lambda _event: accept_selected())
+        path_entry.bind("<Return>", lambda _event: populate(path_var.get()))
+        load_drives()
+        populate(str(Path.home()))
 
     def _run_adb_sideload(self):
         selected=self._adb_require(("sideload",))
