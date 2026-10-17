@@ -9,7 +9,7 @@ command -v "$PYTHON" >/dev/null || { echo "python3 is required" >&2; exit 1; }
 command -v wget >/dev/null || { echo "wget is required" >&2; exit 1; }; command -v tar >/dev/null || { echo "tar is required" >&2; exit 1; }
 rm -rf "$APPDIR" "$WORK"; mkdir -p "$WORK" "$DIST_DIR" "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/icons/hicolor/scalable/apps" "$APPDIR/opt/payload-dumper/src" "$APPDIR/opt/payload-dumper/bin" "$APPDIR/usr/share/licenses/payload-dumper-go"
 # Freeze the GUI and adapter as one Python/Tk application bundle.
-"$PYTHON" -m PyInstaller --noconfirm --clean --windowed --name payload-dumper-gui --distpath "$WORK/pyinstaller-dist" --workpath "$WORK/pyinstaller-build" --specpath "$WORK" --paths src --hidden-import=payload_dumper --hidden-import=tkinter.ttk --collect-all tkinter src/app.py
+"$PYTHON" -m PyInstaller --noconfirm --clean --onefile --windowed --name payload-dumper-gui --distpath "$WORK/pyinstaller-dist" --workpath "$WORK/pyinstaller-build" --specpath "$WORK" --paths src --hidden-import=payload_dumper --hidden-import=tkinter.ttk --collect-all tkinter src/app.py
 install -m 0755 "$WORK/pyinstaller-dist/payload-dumper-gui" "$APPDIR/usr/bin/payload-dumper-gui-bin"
 BACKEND_ARCH="linux_amd64"; if [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then BACKEND_ARCH="linux_arm64"; fi
 BACKEND_ARCHIVE="payload-dumper-go_${BACKEND_VERSION}_${BACKEND_ARCH}.tar.gz"
