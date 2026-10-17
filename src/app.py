@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Payload Dumper Linux desktop UI."""
+"""DroidLab Linux desktop UI."""
 from __future__ import annotations
 import os, queue, threading, tkinter as tk, shutil, re, shlex
 import subprocess
