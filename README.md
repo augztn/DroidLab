@@ -1,6 +1,6 @@
-# DroidLab for Linux
+# DroidLab
 
-DroidLab is a Linux desktop Android firmware toolkit for inspecting and extracting OTA `payload.bin` files and OTA ZIP packages, with guarded Fastboot flashing and ADB device-management/sideload workflows. Targets x86_64 AppImage builds for Ubuntu, Fedora, and Arch Linux.
+DroidLab is a desktop Android firmware toolkit for inspecting and extracting OTA `payload.bin` files and OTA ZIP packages, with guarded Fastboot flashing and ADB device-management/sideload workflows. Linux builds are distributed as AppImages; Windows builds are distributed as portable ZIP bundles.
 
 ## Current implementation
 
@@ -13,6 +13,12 @@ DroidLab is a Linux desktop Android firmware toolkit for inspecting and extracti
 - ADB & Sideload tab: detect ADB device states; reboot normally, to bootloader, or recovery; view live `adb logcat`; save logcat to a text file; generate a bugreport ZIP; run trusted `adb shell` diagnostics such as `dumpsys battery`; and sideload OTA ZIPs while the device is in recovery's “Apply update from ADB” mode.
 - ADB and Fastboot require Android SDK Platform-Tools installed on the host and available on `PATH`; they are not bundled. The app requires an explicit confirmation before rebooting, flashing, sideloading, or collecting a bugreport. Bugreports may contain sensitive device data.
 - AppImage build script packages the GUI plus the `payload-dumper-go` backend.
+
+## Windows build
+
+Windows x64 portable ZIP bundles are built automatically by GitHub Actions for pushes to `main`, pull requests, manual runs, and version tags. Open the repository's [Actions](https://github.com/nightx24/DroidLab/actions/workflows/windows.yml) page, select a successful Windows build, and download the `droidlab-windows-x64` artifact. Extract the ZIP and run `DroidLab.exe`.
+
+The portable bundle includes the GUI and the Windows `payload-dumper-go` extraction backend. Install Android SDK Platform-Tools separately and add the folder containing `adb.exe` and `fastboot.exe` to your Windows `PATH` to use ADB, sideload, and Fastboot features. The Windows build is still experimental until tested on real Windows systems.
 
 ## Build locally
 
