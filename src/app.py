@@ -2,6 +2,7 @@
 """Payload Dumper Linux desktop UI."""
 from __future__ import annotations
 import os, queue, threading, tkinter as tk
+import subprocess
 from tkinter import filedialog, messagebox, ttk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from pathlib import Path
@@ -106,12 +107,46 @@ class PayloadDumperApp(TkinterDnD.Tk):
 
         add("/", "Internal filesystem")
         add(Path.home(), "Home directory")
-        # /proc/self/mounts includes mounted internal partitions (such as /home
-        # and /boot) and USB/SD drives mounted by the desktop environment.
+
+        # Nautilus discovers user-visible volumes through GIO/GVfs. Use the
+        # same GIO-backed view when PyGObject is installed, which also handles
+        # desktop-managed mounts that do not live under /media or /mnt.
+        try:
+            import gi
+            gi.require_version("Gio", "2.0")
+            from gi.repository import Gio
+            monitor = Gio.VolumeMonitor.get()
+            for mount in monitor.get_mounts():
+                try:
+                    root = mount.get_root()
+                    path = root.get_path()
+                    if path:
+                        name = mount.get_name() or Path(path).name or path
+                        add(path, f"Mounted volume: {name}")
+                except Exception:
+                    continue
+            for volume in monitor.get_volumes():
+                try:
+                    mount = volume.get_mount()
+                    if mount is not None:
+                        continue
+                    name = volume.get_name() or "Volume"
+                    mountpoint = getattr(volume, "get_default_location", None)
+                    if mountpoint:
+                        location = mountpoint()
+                        if location and location.get_path():
+                            add(location.get_path(), f"Volume: {name}")
+                except Exception:
+                    continue
+        except (ImportError, ValueError, AttributeError) as exc:
+            self._append(f"GIO volume discovery unavailable; using Linux mount table: {exc}")
+
+        # Fallback for systems without GIO bindings. It detects disk-backed
+        # internal partitions and removable / network mounts from /proc.
         disk_filesystems = {
             "ext2", "ext3", "ext4", "btrfs", "xfs", "f2fs", "vfat", "fat",
             "fat32", "exfat", "ntfs", "ntfs3", "fuseblk", "udf", "hfsplus",
-            "apfs", "zfs", "cifs", "smb3", "nfs", "nfs4", "fuse.sshfs"
+            "apfs", "zfs", "cifs", "smb3", "nfs", "nfs4", "fuse.sshfs", "fuse.gvfsd-fuse"
         }
         try:
             with open("/proc/self/mounts", "r", encoding="utf-8") as mounts:
