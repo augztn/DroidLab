@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Payload Dumper Linux desktop UI."""
 from __future__ import annotations
-import os, queue, threading, tkinter as tk
+import os, queue, threading, tkinter as tk, shutil, re, shlex
 import subprocess
 from tkinter import filedialog, messagebox, ttk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from pathlib import Path
 from payload_dumper import BackendError, extract, inspect_source, sha256_file
 
-APP_NAME = "Payload Dumper"  # Change this single value when rebranding the app.
+APP_NAME = "FlashLab"  # Canonical product name.
 class PayloadDumperApp(TkinterDnD.Tk):
     def __init__(self):
         super().__init__(); self.title(APP_NAME); self.geometry("1440x900"); self.minsize(1024,700); self.configure(bg="#111827")
@@ -20,8 +20,8 @@ class PayloadDumperApp(TkinterDnD.Tk):
         try:s.theme_use("clam")
         except tk.TclError:pass
         s.configure("TFrame",background="#111827"); s.configure("Panel.TFrame",background="#1f2937"); s.configure("TLabel",background="#111827",foreground="#e5e7eb",font=("Sans",13)); s.configure("Title.TLabel",font=("Sans",23,"bold"),foreground="#f9fafb"); s.configure("Muted.TLabel",foreground="#cbd5e1"); s.configure("TButton",padding=(14,10),font=("Sans",12)); s.configure("TCheckbutton",background="#1f2937",foreground="#f9fafb",font=("Sans",13)); s.configure("TEntry",padding=7,font=("Sans",12)); s.configure("TCombobox",padding=7,font=("Sans",12)); s.configure("Treeview",background="#0b1220",fieldbackground="#0b1220",foreground="#f1f5f9",rowheight=38,font=("Sans",12)); s.configure("Treeview.Heading",background="#374151",foreground="#ffffff",font=("Sans",12,"bold"),padding=(9,9)); s.map("Treeview",background=[("selected","#1d4ed8")],foreground=[("selected","#ffffff")])
-        root=ttk.Frame(self,padding=16); root.pack(fill="both",expand=True); h=ttk.Frame(root); h.pack(fill="x",pady=(0,10))
-        ttk.Label(h,text=APP_NAME,style="Title.TLabel").pack(anchor="w"); ttk.Label(h,text="Android OTA partition extractor · Linux desktop",style="Muted.TLabel").pack(anchor="w",pady=(3,0))
+        notebook=ttk.Notebook(self); notebook.pack(fill="both",expand=True,padx=8,pady=8); root=ttk.Frame(notebook,padding=16); notebook.add(root,text="Payload Extractor"); flash_tab=ttk.Frame(notebook,padding=16); notebook.add(flash_tab,text="Fastboot & Flashing"); self._build_flash_tab(flash_tab); h=ttk.Frame(root); h.pack(fill="x",pady=(0,10))
+        ttk.Label(h,text=APP_NAME,style="Title.TLabel").pack(anchor="w"); ttk.Label(h,text="Android firmware toolkit · Linux desktop",style="Muted.TLabel").pack(anchor="w",pady=(3,0))
         src=ttk.Frame(root,style="Panel.TFrame",padding=10); src.pack(fill="x",pady=(0,7)); ttk.Label(src,text="INPUT FILE PATH — TYPE OR PASTE THE FULL PATH",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(src,style="Panel.TFrame"); row.pack(fill="x",pady=(6,0)); self.source_entry=ttk.Entry(row,textvariable=self.source); self.source_entry.pack(side="left",fill="x",expand=True,ipady=4); self.source_entry.bind("<Return>",lambda _event:self._apply_manual_source_path()); ttk.Button(row,text="Browse…",command=self._browse_source).pack(side="left",padx=(7,0)); actions=ttk.Frame(src,style="Panel.TFrame"); actions.pack(fill="x",pady=(7,0)); ttk.Button(actions,text="Use typed path",command=self._apply_manual_source_path).pack(side="left"); ttk.Button(actions,text="Inspect partitions",command=self._inspect).pack(side="left",padx=(7,0))
         out=ttk.Frame(root,style="Panel.TFrame",padding=10); out.pack(fill="x",pady=(0,7)); ttk.Label(out,text="OUTPUT DIRECTORY",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(out,style="Panel.TFrame"); row.pack(fill="x",pady=(5,0)); ttk.Entry(row,textvariable=self.output).pack(side="left",fill="x",expand=True,ipady=4); ttk.Button(row,text="Choose…",command=self._browse_output).pack(side="left",padx=(7,0))
         # Compact mounted-drive controls share the output panel to save vertical space for partitions.
@@ -31,6 +31,69 @@ class PayloadDumperApp(TkinterDnD.Tk):
         side=ttk.Frame(middle,style="Panel.TFrame",padding=18,width=340); side.pack(side="right",fill="y"); side.pack_propagate(False); ttk.Label(side,text="OPTIONS",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); ttk.Checkbutton(side,text="Generate SHA-256\nfingerprints",variable=self.fingerprint).pack(anchor="w",pady=(12,4)); ttk.Label(side,text="Fingerprints are separate\nfrom the backend’s OTA\nverification.",background="#1f2937",foreground="#9ca3af",justify="left").pack(anchor="w",pady=8); self.start_button=ttk.Button(side,text="Extract payload",command=self._start); self.start_button.pack(fill="x",pady=(8,5)); self.cancel_button=ttk.Button(side,text="Cancel",command=self._cancel,state="disabled"); self.cancel_button.pack(fill="x")
         logbox=ttk.Frame(root,style="Panel.TFrame",padding=10); logbox.pack(fill="x",expand=False); ttk.Label(logbox,text="ACTIVITY LOG",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); self.log=tk.Text(logbox,bg="#0b1220",fg="#d1d5db",insertbackground="white",relief="flat",wrap="word",font=("Monospace",11),height=4); self.log.pack(fill="x",expand=False,pady=6); self.log.configure(state="disabled"); self.progress=ttk.Progressbar(logbox,mode="indeterminate"); self.progress.pack(fill="x",pady=(2,0)); ttk.Label(root,textvariable=self.status,style="Muted.TLabel").pack(anchor="w",pady=(7,0))
         self._refresh_storage_locations(); self._enable_drop(self); self._enable_drop(src); self._enable_drop(self.source_entry); self._enable_drop(root); self._append("Drag payload.bin or an OTA .zip onto the window, or type/paste its full path and choose Use typed path. Inspect to select individual partitions."); self._append("Backend: payload-dumper-go (Apache-2.0). Some delta OTA operations are unsupported.")
+    def _build_flash_tab(self, tab):
+        tab.columnconfigure(0, weight=1)
+        ttk.Label(tab, text="Fastboot & Flashing", font=("Sans", 20, "bold")).grid(row=0, column=0, sticky="w", pady=(0, 6))
+        ttk.Label(tab, text="Drop an image to detect its likely partition. Review all details before flashing.", style="Muted.TLabel").grid(row=1, column=0, sticky="w", pady=(0, 12))
+        box = ttk.Frame(tab, style="Panel.TFrame", padding=14); box.grid(row=2, column=0, sticky="ew", pady=(0, 10))
+        ttk.Label(box, text="IMAGE FILE (.img)", background="#1f2937", foreground="#93c5fd").pack(anchor="w")
+        row = ttk.Frame(box, style="Panel.TFrame"); row.pack(fill="x", pady=(6, 0))
+        self.flash_image = tk.StringVar(); self.flash_entry = ttk.Entry(row, textvariable=self.flash_image); self.flash_entry.pack(side="left", fill="x", expand=True, ipady=5)
+        ttk.Button(row, text="Browse…", command=self._browse_flash_image).pack(side="left", padx=(8, 0)); self._enable_drop(box); self._enable_drop(self.flash_entry); self._enable_drop(tab)
+        device = ttk.Frame(tab, style="Panel.TFrame", padding=14); device.grid(row=3, column=0, sticky="ew", pady=(0, 10))
+        ttk.Label(device, text="FASTBOOT DEVICE", background="#1f2937", foreground="#93c5fd").pack(anchor="w")
+        row = ttk.Frame(device, style="Panel.TFrame"); row.pack(fill="x", pady=(6, 0))
+        self.fastboot_device = tk.StringVar(); self.device_combo = ttk.Combobox(row, textvariable=self.fastboot_device, state="readonly"); self.device_combo.pack(side="left", fill="x", expand=True)
+        ttk.Button(row, text="Refresh devices", command=self._refresh_fastboot_devices).pack(side="left", padx=(8, 0))
+        ttk.Label(device, text="Target partition", background="#1f2937", foreground="#93c5fd").pack(anchor="w", pady=(10, 0))
+        self.flash_partition = tk.StringVar(); self.partition_combo = ttk.Combobox(device, textvariable=self.flash_partition, values=("boot", "vendor", "vendor_boot", "init_boot", "dtbo", "vbmeta", "recovery", "system", "product", "odm", "system_ext", "vbmeta_system", "vbmeta_vendor"), state="normal"); self.partition_combo.pack(fill="x", pady=(5, 0))
+        preview = ttk.Frame(tab, style="Panel.TFrame", padding=14); preview.grid(row=4, column=0, sticky="ew", pady=(0, 10))
+        ttk.Label(preview, text="COMMAND PREVIEW", background="#1f2937", foreground="#93c5fd").pack(anchor="w")
+        self.flash_command = tk.StringVar(value="Select an image and Fastboot device to preview the command.")
+        ttk.Label(preview, textvariable=self.flash_command, background="#0b1220", foreground="#f1f5f9", padding=10, wraplength=1000, justify="left").pack(fill="x", pady=(6, 0))
+        ttk.Label(tab, text="WARNING: An incompatible image or wrong partition can prevent Android from booting. Filename matching is only a suggestion. Verify device compatibility and have a recovery plan.", foreground="#fca5a5", wraplength=1100, justify="left").grid(row=5, column=0, sticky="ew", pady=(0, 10))
+        row = ttk.Frame(tab); row.grid(row=6, column=0, sticky="w"); ttk.Button(row, text="Preview command", command=self._update_flash_preview).pack(side="left"); ttk.Button(row, text="Flash image…", command=self._flash_image).pack(side="left", padx=(8, 0))
+        self.flash_image.trace_add("write", lambda *_: self._on_flash_image_changed()); self.flash_partition.trace_add("write", lambda *_: self._update_flash_preview()); self.fastboot_device.trace_add("write", lambda *_: self._update_flash_preview())
+
+    def _on_flash_image_changed(self):
+        path = Path(self.flash_image.get().strip().strip(chr(34)).strip(chr(39)))
+        mapping = {"boot.img":"boot", "vendor.img":"vendor", "vendor_boot.img":"vendor_boot", "init_boot.img":"init_boot", "dtbo.img":"dtbo", "vbmeta.img":"vbmeta", "recovery.img":"recovery", "system.img":"system", "product.img":"product", "odm.img":"odm", "system_ext.img":"system_ext", "vbmeta_system.img":"vbmeta_system", "vbmeta_vendor.img":"vbmeta_vendor"}
+        if path.name.lower() in mapping: self.flash_partition.set(mapping[path.name.lower()]); self._append("Filename suggests partition " + mapping[path.name.lower()] + "; verify compatibility before flashing.")
+        self._update_flash_preview()
+
+    def _browse_flash_image(self):
+        path = filedialog.askopenfilename(title="Choose image to flash", filetypes=[("Android image", "*.img"), ("All files", "*")])
+        if path: self.flash_image.set(path)
+
+    def _refresh_fastboot_devices(self):
+        binary = shutil.which("fastboot")
+        if not binary: messagebox.showerror("Fastboot not found", "Install Android platform-tools and ensure fastboot is on PATH."); return
+        try: result = subprocess.run([binary, "devices", "-l"], capture_output=True, text=True, timeout=8, check=False)
+        except (OSError, subprocess.TimeoutExpired) as exc: messagebox.showerror("Device detection failed", str(exc)); return
+        devices = [line.split()[0] for line in result.stdout.splitlines() if len(line.split()) >= 2 and line.split()[1] == "fastboot"]
+        self.device_combo["values"] = devices; self.fastboot_device.set(devices[0] if len(devices) == 1 else "")
+        self._append("Fastboot scan: " + (", ".join(devices) if devices else "no devices found"))
+
+    def _update_flash_preview(self):
+        image = self.flash_image.get().strip().strip(chr(34)).strip(chr(39)); part = self.flash_partition.get().strip(); serial = self.fastboot_device.get().strip()
+        self.flash_command.set("Select an image, partition, and one Fastboot device." if not (image and part and serial) else "fastboot -s " + serial + " flash " + part + " " + shlex.quote(image))
+
+    def _flash_image(self):
+        image = Path(self.flash_image.get().strip().strip(chr(34)).strip(chr(39))).expanduser(); part = self.flash_partition.get().strip(); serial = self.fastboot_device.get().strip(); binary = shutil.which("fastboot")
+        if not binary: messagebox.showerror("Fastboot not found", "Install Android platform-tools and ensure fastboot is on PATH."); return
+        if not image.is_file() or image.suffix.lower() != ".img": messagebox.showerror("Invalid image", "Choose an existing .img file."); return
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", part): messagebox.showerror("Invalid partition", "Enter a valid partition name."); return
+        if not serial: messagebox.showwarning("Select device", "Refresh devices and select exactly one Fastboot device."); return
+        command = [binary, "-s", serial, "flash", part, str(image.resolve())]
+        detail = "Device: " + serial + "\nImage: " + str(image.resolve()) + "\nPartition: " + part + "\nCommand: " + " ".join(shlex.quote(x) for x in command) + "\n\nWrong or incompatible images can make the device unbootable. Verify this image is for this exact device and partition. Continue?"
+        if not messagebox.askyesno("Confirm flashing", detail, icon="warning"): self._append("Flash cancelled before execution."); return
+        self._append("Executing: " + " ".join(shlex.quote(x) for x in command)); self.status.set("Flashing image…"); self.update_idletasks()
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=900, check=False); output = (result.stdout + "\n" + result.stderr).strip()
+            for line in output.splitlines(): self._append(line)
+            if result.returncode == 0: self.status.set("Fastboot flash completed"); messagebox.showinfo("Flash complete", "Fastboot reported success for " + part + ". Verify the device before rebooting.")
+            else: self.status.set("Fastboot failed"); messagebox.showerror("Flash failed", output or "fastboot exit status " + str(result.returncode))
+        except (OSError, subprocess.TimeoutExpired) as exc: self.status.set("Fastboot operation failed"); messagebox.showerror("Fastboot error", str(exc))
     def _enable_drop(self, widget):
         """Allow files to be dropped onto the main window and source controls."""
         try:
@@ -45,6 +108,9 @@ class PayloadDumperApp(TkinterDnD.Tk):
         except (tk.TclError, TypeError):
             self._append("Could not read the dropped file path. Use Browse to select it.")
             return "break"
+        images = [p for p in paths if p.is_file() and p.suffix.lower() == ".img"]
+        if images:
+            self.flash_image.set(str(images[0].resolve())); self.status.set("Flash image selected: " + images[0].name); self._append("Flash image dropped: " + str(images[0])); return "break"
         candidates = [p for p in paths if p.is_file() and p.suffix.lower() in (".bin", ".zip")]
         if not candidates:
             self.status.set("Unsupported dropped file")
