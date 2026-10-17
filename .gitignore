@@ -1,0 +1,31 @@
+# Build output
+build/
+dist/
+out/
+AppDir/
+*.AppImage
+*.deb
+*.rpm
+*.tar.zst
+
+# Rust/CMake/Meson
+target/
+cmake-build-*/
+meson-private/
+meson-logs/
+compile_commands.json
+
+# IDE/editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local payloads and extracted partitions
+*.bin
+*.img
+*.zip
+*.payload
+output/
+extracted/
