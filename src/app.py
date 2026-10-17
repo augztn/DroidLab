@@ -38,6 +38,9 @@ class PayloadDumperApp(TkinterDnD.Tk):
         link = ttk.Label(body, text="Instagram: @augztn", foreground="#60a5fa", cursor="hand2", font=("Sans", 12, "underline"))
         link.pack(anchor="center", pady=(0, 12))
         link.bind("<Button-1>", lambda _event: webbrowser.open("https://www.instagram.com/augztn/"))
+        github_link = ttk.Label(body, text="GitHub: github.com/nightx24", foreground="#60a5fa", cursor="hand2", font=("Sans", 12, "underline"))
+        github_link.pack(anchor="center", pady=(0, 12))
+        github_link.bind("<Button-1>", lambda _event: webbrowser.open("https://github.com/nightx24"))
         ttk.Label(body, text="Payload inspection and extraction · Fastboot tools · ADB & OTA sideload", style="Muted.TLabel", wraplength=410, justify="center").pack(anchor="center", pady=(0, 16))
         ttk.Button(body, text="Close", command=dialog.destroy).pack(anchor="center")
 
