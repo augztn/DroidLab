@@ -89,65 +89,81 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self._append("Input path set manually: " + resolved)
 
     def _refresh_storage_locations(self):
-        """List common internal and mounted removable storage locations."""
+        """Refresh internal partitions and removable drives from Linux mount information."""
         locations = []
-        seen = set()
+        seen_paths = set()
+
         def add(path, label):
             try:
                 resolved = Path(path).expanduser().resolve()
-                if resolved.is_dir() and os.access(resolved, os.R_OK | os.X_OK) and str(resolved) not in seen:
-                    seen.add(str(resolved))
-                    locations.append((f"{label} — {resolved}", str(resolved)))
+                if resolved.is_dir() and os.access(resolved, os.R_OK | os.X_OK):
+                    key = str(resolved)
+                    if key not in seen_paths:
+                        seen_paths.add(key)
+                        locations.append((f"{label} — {key}", key))
             except (OSError, RuntimeError):
                 pass
 
-        add(Path.home(), "Home (internal)")
-        add("/", "Root filesystem (internal)")
-        # Common Linux mount locations for USB drives, SD cards, and other volumes.
-        mount_roots = (Path("/run/media"), Path("/media"), Path("/mnt"))
-        for root in mount_roots:
-            if not root.exists():
-                continue
-            try:
-                candidates = [root, *root.iterdir()]
-                for candidate in candidates:
-                    if not candidate.is_dir():
-                        continue
-                    try:
-                        children = list(candidate.iterdir())
-                    except OSError:
-                        children = []
-                    if children:
-                        for child in children:
-                            if child.is_dir():
-                                label = "External / mounted drive" if str(root) != "/mnt" else "Mounted drive"
-                                add(child, label)
-                    add(candidate, "External / mounted drive" if str(root) != "/mnt" else "Mounted location")
-            except OSError:
-                continue
-        # Include mounted volumes under these standard paths even when the
-        # directory is empty, and decode escaped mount paths from /proc/mounts.
+        add("/", "Internal filesystem")
+        add(Path.home(), "Home directory")
+        # /proc/self/mounts includes mounted internal partitions (such as /home
+        # and /boot) and USB/SD drives mounted by the desktop environment.
+        disk_filesystems = {
+            "ext2", "ext3", "ext4", "btrfs", "xfs", "f2fs", "vfat", "fat",
+            "fat32", "exfat", "ntfs", "ntfs3", "fuseblk", "udf", "hfsplus",
+            "apfs", "zfs", "cifs", "smb3", "nfs", "nfs4", "fuse.sshfs"
+        }
         try:
-            with open("/proc/mounts", "r", encoding="utf-8") as mounts:
+            with open("/proc/self/mounts", "r", encoding="utf-8") as mounts:
                 for line in mounts:
                     fields = line.split()
-                    if len(fields) < 2:
+                    if len(fields) < 3:
                         continue
-                    mount = fields[1].replace("\\040", " ").replace("\\011", "\\t").replace("\\134", "\\")
-                    if mount.startswith(("/run/media/", "/media/", "/mnt/")):
-                        add(mount, "Mounted drive")
+                    device, mountpoint, filesystem = fields[:3]
+                    for escaped, actual in (("\\040", " "), ("\\011", "\t"), ("\\134", "\\"), ("\\043", "#")):
+                        device = device.replace(escaped, actual)
+                        mountpoint = mountpoint.replace(escaped, actual)
+                    if mountpoint == "/" or (filesystem not in disk_filesystems and not device.startswith("/dev/")):
+                        continue
+                    external = mountpoint.startswith(("/media/", "/run/media/", "/mnt/", "/Volumes/"))
+                    user_mount = "/gvfs/" in mountpoint or mountpoint.startswith("/run/user/")
+                    if external or user_mount:
+                        label = "External / removable drive"
+                    elif device.startswith("/dev/") or filesystem in disk_filesystems:
+                        label = "Internal / mounted volume"
+                    else:
+                        continue
+                    add(mountpoint, f"{label} ({device})")
         except OSError:
             pass
+
+        # Fallback for systems that expose drives in conventional mount folders
+        # but do not provide useful /proc mount information.
+        for root in (Path("/run/media"), Path("/media"), Path("/mnt"), Path("/Volumes")):
+            if not root.is_dir():
+                continue
+            try:
+                for candidate in root.iterdir():
+                    if candidate.is_dir():
+                        add(candidate, "External / mounted drive")
+                        try:
+                            for child in candidate.iterdir():
+                                if child.is_dir():
+                                    add(child, "External / mounted drive")
+                        except OSError:
+                            pass
+            except OSError:
+                pass
+
         self._storage_locations = locations
-        self.storage_combo["values"] = [label for label, _path in locations]
-        if locations:
-            current = self.storage_var.get()
-            labels = [label for label, _path in locations]
-            self.storage_var.set(current if current in labels else labels[0])
-            self.status.set(f"Found {len(locations)} storage location(s)")
-        else:
-            self.storage_var.set("")
-            self.status.set("No accessible storage locations found")
+        labels = [label for label, _path in locations]
+        self.storage_combo["values"] = labels
+        current = self.storage_var.get()
+        self.storage_var.set(current if current in labels else (labels[0] if labels else ""))
+        self.status.set(f"Storage refreshed: {len(locations)} accessible location(s)")
+        self._append(f"Storage list refreshed: {len(locations)} accessible location(s)")
+        if not locations:
+            self.status.set("No accessible storage locations found. Type a path or use Browse.")
 
     def _selected_storage_path(self):
         selected = self.storage_var.get()
