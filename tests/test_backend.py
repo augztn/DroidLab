@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.payload_dumper import BackendError, _find_cli, inspect_source, sha256_file
+from src.payload_dumper import BackendError, _bundle_root, _find_cli, inspect_source, sha256_file
 
 class BackendTests(unittest.TestCase):
     def test_sha256_matches_known_value(self):
@@ -32,6 +32,11 @@ class BackendTests(unittest.TestCase):
             {"name": "boot", "size_bytes": 65536 * 1024, "hash": ""},
             {"name": "system", "size_bytes": 1024 * 1024, "hash": ""},
         ])
+
+    def test_frozen_appimage_resolves_appdir_root(self):
+        with patch("src.payload_dumper.sys.frozen", True, create=True):
+            with patch("src.payload_dumper.sys.executable", "/tmp/Payload.AppDir/usr/bin/payload-dumper-gui-bin"):
+                self.assertEqual(_bundle_root(), Path("/tmp/Payload.AppDir"))
 
     def test_cli_lookup_does_not_claim_uninstalled_backend(self):
         with patch("src.payload_dumper.shutil.which", return_value=None):
