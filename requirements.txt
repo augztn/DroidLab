@@ -1,4 +1,5 @@
-# GUI dependency is Python stdlib Tkinter.
+# GUI uses Tkinter plus TkinterDnD for native file drag-and-drop.
+tkinterdnd2>=0.4.3,<1
 # AppImage build dependency (install in the build environment):
 pyinstaller>=6.0,<7
 # Extraction backend: payload-dumper-go (bundled by scripts/build-linux.sh for AppImage builds).
