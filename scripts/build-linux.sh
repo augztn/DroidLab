@@ -10,7 +10,11 @@ command -v wget >/dev/null || { echo "wget is required" >&2; exit 1; }; command 
 rm -rf "$APPDIR" "$WORK"; mkdir -p "$WORK" "$DIST_DIR" "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/icons/hicolor/scalable/apps" "$APPDIR/opt/payload-dumper/src" "$APPDIR/opt/payload-dumper/bin" "$APPDIR/usr/share/licenses/payload-dumper-go"
 # Freeze the GUI and adapter as one Python/Tk application bundle.
 # Bundle GIO introspection modules when PyGObject is available on Linux hosts.
-"$PYTHON" -m PyInstaller --noconfirm --clean --onefile --windowed --name payload-dumper-gui --distpath "$WORK/pyinstaller-dist" --workpath "$WORK/pyinstaller-build" --specpath "$WORK" --paths src --hidden-import=payload_dumper --hidden-import=tkinter.ttk --hidden-import=gi --hidden-import=gi.repository.Gio --collect-all tkinter --collect-all tkinterdnd2 src/app.py
+PYI_GIO_ARGS=()
+if "$PYTHON" -c "import gi; gi.require_version('Gio', '2.0'); from gi.repository import Gio" >/dev/null 2>&1; then
+  PYI_GIO_ARGS+=(--hidden-import=gi --hidden-import=gi.repository.Gio)
+fi
+"$PYTHON" -m PyInstaller --noconfirm --clean --onefile --windowed --name payload-dumper-gui --distpath "$WORK/pyinstaller-dist" --workpath "$WORK/pyinstaller-build" --specpath "$WORK" --paths src --hidden-import=payload_dumper --hidden-import=tkinter.ttk "${PYI_GIO_ARGS[@]}" --collect-all tkinter --collect-all tkinterdnd2 src/app.py
 install -m 0755 "$WORK/pyinstaller-dist/payload-dumper-gui" "$APPDIR/usr/bin/payload-dumper-gui-bin"
 BACKEND_ARCH="linux_amd64"; if [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then BACKEND_ARCH="linux_arm64"; fi
 BACKEND_ARCHIVE="payload-dumper-go_${BACKEND_VERSION}_${BACKEND_ARCH}.tar.gz"
