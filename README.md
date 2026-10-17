@@ -43,5 +43,5 @@ This is an active implementation, not yet a claimed production release. CI check
 
 ## Reference projects
 
-- [rhythmcache/payload-dumper-gui](https://github.com/rhythmcache/payload-dumper-gui)
+- [rhythmcache/droidlab-gui](https://github.com/rhythmcache/droidlab-gui)
 - [rajmani7584/Payload-Dumper-Android](https://github.com/rajmani7584/Payload-Dumper-Android)
