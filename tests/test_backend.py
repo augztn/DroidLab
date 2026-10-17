@@ -1,4 +1,5 @@
 import hashlib
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -33,6 +34,7 @@ class BackendTests(unittest.TestCase):
             {"name": "system", "size_bytes": 1024 * 1024, "hash": ""},
         ])
 
+    @unittest.skipIf(os.name == "nt", "AppImage path resolution is Linux-specific")
     def test_frozen_appimage_resolves_appdir_root(self):
         with patch("src.payload_dumper.sys.frozen", True, create=True):
             with patch("src.payload_dumper.sys.executable", "/tmp/Payload.AppDir/usr/bin/droidlab-gui-bin"):
