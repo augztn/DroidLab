@@ -19,7 +19,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         s.configure("TFrame",background="#111827"); s.configure("Panel.TFrame",background="#1f2937"); s.configure("TLabel",background="#111827",foreground="#e5e7eb",font=("Sans",10)); s.configure("Title.TLabel",font=("Sans",22,"bold"),foreground="#f9fafb"); s.configure("Muted.TLabel",foreground="#9ca3af"); s.configure("TButton",padding=(10,6)); s.configure("Treeview",background="#111827",fieldbackground="#111827",foreground="#e5e7eb",rowheight=27); s.configure("Treeview.Heading",background="#374151",foreground="#f9fafb")
         root=ttk.Frame(self,padding=20); root.pack(fill="both",expand=True); h=ttk.Frame(root); h.pack(fill="x",pady=(0,14))
         ttk.Label(h,text="Payload Dumper",style="Title.TLabel").pack(anchor="w"); ttk.Label(h,text="Android OTA partition extractor · Linux desktop",style="Muted.TLabel").pack(anchor="w",pady=(3,0))
-        src=ttk.Frame(root,style="Panel.TFrame",padding=12); src.pack(fill="x",pady=(0,10)); ttk.Label(src,text="SOURCE FILE",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(src,style="Panel.TFrame"); row.pack(fill="x",pady=(6,0)); self.source_entry=ttk.Entry(row,textvariable=self.source); self.source_entry.pack(side="left",fill="x",expand=True,ipady=4); ttk.Button(row,text="Browse…",command=self._browse_source).pack(side="left",padx=(7,0)); ttk.Button(row,text="Inspect partitions",command=self._inspect).pack(side="left",padx=(7,0))
+        src=ttk.Frame(root,style="Panel.TFrame",padding=12); src.pack(fill="x",pady=(0,10)); ttk.Label(src,text="INPUT FILE PATH — TYPE OR PASTE THE FULL PATH",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(src,style="Panel.TFrame"); row.pack(fill="x",pady=(6,0)); self.source_entry=ttk.Entry(row,textvariable=self.source); self.source_entry.pack(side="left",fill="x",expand=True,ipady=4); self.source_entry.bind("<Return>",lambda _event:self._apply_manual_source_path()); ttk.Button(row,text="Browse…",command=self._browse_source).pack(side="left",padx=(7,0)); actions=ttk.Frame(src,style="Panel.TFrame"); actions.pack(fill="x",pady=(7,0)); ttk.Button(actions,text="Use typed path",command=self._apply_manual_source_path).pack(side="left"); ttk.Button(actions,text="Inspect partitions",command=self._inspect).pack(side="left",padx=(7,0))
         out=ttk.Frame(root,style="Panel.TFrame",padding=12); out.pack(fill="x",pady=(0,10)); ttk.Label(out,text="OUTPUT DIRECTORY",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(out,style="Panel.TFrame"); row.pack(fill="x",pady=(6,0)); ttk.Entry(row,textvariable=self.output).pack(side="left",fill="x",expand=True,ipady=4); ttk.Button(row,text="Choose…",command=self._browse_output).pack(side="left",padx=(7,0))
         drive_row=ttk.Frame(out,style="Panel.TFrame"); drive_row.pack(fill="x",pady=(9,0)); ttk.Label(drive_row,text="STORAGE LOCATIONS",background="#1f2937",foreground="#93c5fd").pack(side="left",padx=(0,8)); self.storage_var=tk.StringVar(); self.storage_combo=ttk.Combobox(drive_row,textvariable=self.storage_var,state="readonly",width=42); self.storage_combo.pack(side="left",fill="x",expand=True); ttk.Button(drive_row,text="Refresh",command=self._refresh_storage_locations).pack(side="left",padx=(6,0)); ttk.Button(drive_row,text="Browse for payload",command=self._browse_selected_storage).pack(side="left",padx=(6,0)); ttk.Button(drive_row,text="Use for output",command=self._use_selected_storage).pack(side="left",padx=(6,0));
         middle=ttk.Frame(root); middle.pack(fill="both",expand=True,pady=(0,10)); panel=ttk.Frame(middle,style="Panel.TFrame",padding=10); panel.pack(side="left",fill="both",expand=True,padx=(0,8)); ttk.Label(panel,text="PARTITIONS (no selection = all)",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); actions=ttk.Frame(panel,style="Panel.TFrame"); actions.pack(fill="x",pady=5); ttk.Button(actions,text="Select all",command=lambda:self._select_all(True)).pack(side="left"); ttk.Button(actions,text="Select none",command=lambda:self._select_all(False)).pack(side="left",padx=5)
@@ -64,6 +64,30 @@ class PayloadDumperApp(TkinterDnD.Tk):
         if p:
             self.source.set(p); self.parts.clear(); self.part_vars.clear()
             for i in self.tree.get_children():self.tree.delete(i)
+    def _apply_manual_source_path(self):
+        """Validate a path typed or pasted into the input field."""
+        raw = self.source.get().strip().strip('"').strip("'")
+        if not raw:
+            messagebox.showwarning("Input path required", "Type or paste the full path to payload.bin or an Android OTA .zip file.")
+            self.source_entry.focus_set()
+            return
+        path = Path(raw).expanduser()
+        if not path.is_file():
+            messagebox.showerror("File not found", "The input path is not an existing file:\\n" + str(path))
+            self.source_entry.focus_set()
+            return
+        if path.suffix.lower() not in {".bin", ".zip"}:
+            messagebox.showerror("Unsupported file", "Choose a payload .bin file or Android OTA .zip file.")
+            return
+        resolved = str(path.resolve())
+        self.source.set(resolved)
+        self.parts.clear()
+        self.part_vars.clear()
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        self.status.set("Input path ready: " + path.name)
+        self._append("Input path set manually: " + resolved)
+
     def _refresh_storage_locations(self):
         """List common internal and mounted removable storage locations."""
         locations = []
