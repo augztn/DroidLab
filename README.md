@@ -1,6 +1,6 @@
 # DroidLab for Linux
 
-DroidLab is a Linux desktop Android firmware toolkit for inspecting and extracting OTA `payload.bin` files and OTA ZIP packages, with a guarded Fastboot image-flashing workflow. Targets x86_64 AppImage builds for Ubuntu, Fedora, and Arch Linux.
+DroidLab is a Linux desktop Android firmware toolkit for inspecting and extracting OTA `payload.bin` files and OTA ZIP packages, with guarded Fastboot flashing and ADB device-management/sideload workflows. Targets x86_64 AppImage builds for Ubuntu, Fedora, and Arch Linux.
 
 ## Current implementation
 
@@ -9,7 +9,10 @@ DroidLab is a Linux desktop Android firmware toolkit for inspecting and extracti
 - Extract all partitions or selected partitions.
 - Display backend output and provide cancellation by terminating the backend process.
 - Optional SHA-256 fingerprints for output files. These fingerprints are not a substitute for the OTA backend's own integrity checks.
-- Fastboot & Flashing tab: drag/drop `.img` files, filename-based partition suggestions, Fastboot device detection, command preview, and explicit confirmation before flashing\n- Flashing requires Android platform-tools (`fastboot`) installed on the host and available on `PATH`; it is not bundled.\n- AppImage build script packages the GUI plus the `payload-dumper-go` backend.
+- Fastboot & Flashing tab: drag/drop `.img` files, filename-based partition suggestions, Fastboot device detection, command preview, and explicit confirmation before flashing.
+- ADB & Sideload tab: detect ADB device states; reboot normally, to bootloader, or recovery; view live `adb logcat`; save logcat to a text file; generate a bugreport ZIP; run trusted `adb shell` diagnostics such as `dumpsys battery`; and sideload OTA ZIPs while the device is in recovery's “Apply update from ADB” mode.
+- ADB and Fastboot require Android SDK Platform-Tools installed on the host and available on `PATH`; they are not bundled. The app requires an explicit confirmation before rebooting, flashing, sideloading, or collecting a bugreport. Bugreports may contain sensitive device data.
+- AppImage build script packages the GUI plus the `payload-dumper-go` backend.
 
 ## Build locally
 
