@@ -73,7 +73,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
             return
         path = Path(raw).expanduser()
         if not path.is_file():
-            messagebox.showerror("File not found", "The input path is not an existing file:\\n" + str(path))
+            messagebox.showerror("File not found", "The input path is not an existing file:\n" + str(path))
             self.source_entry.focus_set()
             return
         if path.suffix.lower() not in {".bin", ".zip"}:
