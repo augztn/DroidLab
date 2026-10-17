@@ -32,7 +32,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         try:
             widget.drop_target_register(DND_FILES)
             widget.dnd_bind("<<Drop>>", self._drop_source)
-        except (tk.TclError, AttributeError) as exc:
+        except Exception as exc:
             # Manual path entry and file browsing remain available if DnD fails.
             self._append(f"Drag-and-drop unavailable on this system: {exc}")
     def _drop_source(self, event):
