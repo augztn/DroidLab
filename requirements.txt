@@ -1,1 +1,4 @@
-# The GUI uses Python standard library Tkinter. Install the payload-dumper CLI backend separately or bundle it in AppImage.
+# GUI dependency is Python stdlib Tkinter.
+# AppImage build dependency (install in the build environment):
+pyinstaller>=6.0,<7
+# Extraction backend: payload-dumper-go (bundled by scripts/build-linux.sh for AppImage builds).
