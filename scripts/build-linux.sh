@@ -8,10 +8,9 @@ command -v "$PYTHON" >/dev/null || { echo "python3 is required" >&2; exit 1; }
 "$PYTHON" -m PyInstaller --version >/dev/null 2>&1 || { echo "Install PyInstaller: python3 -m pip install pyinstaller" >&2; exit 1; }
 command -v wget >/dev/null || { echo "wget is required" >&2; exit 1; }; command -v tar >/dev/null || { echo "tar is required" >&2; exit 1; }
 rm -rf "$APPDIR" "$WORK"; mkdir -p "$WORK" "$DIST_DIR" "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/icons/hicolor/scalable/apps" "$APPDIR/opt/payload-dumper/src" "$APPDIR/opt/payload-dumper/bin" "$APPDIR/usr/share/licenses/payload-dumper-go"
-# Freeze the Python/Tk GUI and include the adapter as a bundled Python module.
-"$PYTHON" -m PyInstaller --noconfirm --clean --windowed --name payload-dumper-gui --distpath "$WORK/pyinstaller-dist" --workpath "$WORK/pyinstaller-build" --specpath "$WORK" --paths src --hidden-import=payload_dumper --hidden-import=tkinter.ttk src/app.py
+# Freeze the GUI and adapter as one Python/Tk application bundle.
+"$PYTHON" -m PyInstaller --noconfirm --clean --windowed --name payload-dumper-gui --distpath "$WORK/pyinstaller-dist" --workpath "$WORK/pyinstaller-build" --specpath "$WORK" --paths src --hidden-import=payload_dumper --hidden-import=tkinter.ttk --collect-all tkinter src/app.py
 install -m 0755 "$WORK/pyinstaller-dist/payload-dumper-gui" "$APPDIR/usr/bin/payload-dumper-gui-bin"
-install -m 0644 src/payload_dumper.py "$APPDIR/opt/payload-dumper/src/payload_dumper.py"
 BACKEND_ARCH="linux_amd64"; if [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then BACKEND_ARCH="linux_arm64"; fi
 BACKEND_ARCHIVE="payload-dumper-go_${BACKEND_VERSION}_${BACKEND_ARCH}.tar.gz"
 wget -q --show-progress "https://github.com/ssut/payload-dumper-go/releases/download/${BACKEND_VERSION}/${BACKEND_ARCHIVE}" -O "$WORK/$BACKEND_ARCHIVE"
@@ -19,30 +18,30 @@ mkdir -p "$WORK/backend"; tar -xzf "$WORK/$BACKEND_ARCHIVE" -C "$WORK/backend"
 BACKEND_PATH="$(find "$WORK/backend" -type f -name payload-dumper-go -print -quit)"
 [[ -n "$BACKEND_PATH" ]] || { echo "payload-dumper-go not found in release archive" >&2; exit 1; }
 install -m 0755 "$BACKEND_PATH" "$APPDIR/opt/payload-dumper/bin/payload-dumper-go"
-# xz is used by the upstream backend. Include executable and shared-library dependencies when present.
 XZ_PATH="$(command -v xz || true)"; [[ -n "$XZ_PATH" ]] || { echo "xz is required" >&2; exit 1; }
 install -m 0755 "$XZ_PATH" "$APPDIR/opt/payload-dumper/bin/xz"
+# Copy xz shared libraries and resolve them from the bundle where applicable.
+mkdir -p "$APPDIR/opt/payload-dumper/lib"
 if command -v ldd >/dev/null; then
-  mkdir -p "$APPDIR/opt/payload-dumper/lib"
   ldd "$XZ_PATH" | awk '/=> \/|^[[:space:]]*\// {for (i=1;i<=NF;i++) if ($i ~ /^\//) {print $i; break}}' | sort -u | while read -r dep; do
-    [[ -f "$dep" ]] && cp -L --parents "$dep" "$APPDIR/opt/payload-dumper/lib/"
+    [[ -f "$dep" ]] && cp -L "$dep" "$APPDIR/opt/payload-dumper/lib/$(basename "$dep")"
   done
 fi
 cat > "$APPDIR/usr/bin/payload-dumper-gui" <<'LAUNCH'
 #!/usr/bin/env bash
 set -euo pipefail
 HERE="$(cd -- "$(dirname -- "$0")/../.." && pwd)"
-export PATH="$HERE/opt/payload-dumper/bin:$HERE/usr/bin:$PATH"
-export LD_LIBRARY_PATH="$HERE/opt/payload-dumper/lib/usr/lib/x86_64-linux-gnu:$HERE/opt/payload-dumper/lib/lib/x86_64-linux-gnu:$HERE/opt/payload-dumper/lib/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export PATH="$HERE/opt/payload-dumper/bin:$PATH"
+export LD_LIBRARY_PATH="$HERE/opt/payload-dumper/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 exec "$HERE/usr/bin/payload-dumper-gui-bin" "$@"
 LAUNCH
-chmod 0755 "$APPDIR/usr/bin/payload-dumper-gui"
+chmod 0755 "$APPDIR/usr/bin/payload-dumper-gui" "$APPDIR/usr/bin/payload-dumper-gui-bin"
 cat > "$APPDIR/AppRun" <<'RUN'
 #!/usr/bin/env bash
 set -euo pipefail
 HERE="$(cd -- "$(dirname -- "$0")" && pwd)"
 export PATH="$HERE/opt/payload-dumper/bin:$HERE/usr/bin:$PATH"
-export LD_LIBRARY_PATH="$HERE/opt/payload-dumper/lib/usr/lib/x86_64-linux-gnu:$HERE/opt/payload-dumper/lib/lib/x86_64-linux-gnu:$HERE/opt/payload-dumper/lib/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="$HERE/opt/payload-dumper/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 exec "$HERE/usr/bin/payload-dumper-gui" "$@"
 RUN
 chmod 0755 "$APPDIR/AppRun"
