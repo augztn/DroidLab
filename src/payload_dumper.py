@@ -18,12 +18,23 @@ def _bundle_root() -> Path:
     return Path(__file__).resolve().parent.parent
 def _find_cli() -> list[str] | None:
     root = _bundle_root()
-    candidates = [root / "opt" / "payload-dumper" / "bin" / "payload-dumper-go",
-                  root / "bin" / "payload-dumper-go"]
+    # AppImage/Linux and portable Windows layouts.
+    candidates = [
+        root / "opt" / "payload-dumper" / "bin" / "payload-dumper-go",
+        root / "opt" / "payload-dumper" / "bin" / "payload-dumper-go.exe",
+        root / "bin" / "payload-dumper-go",
+        root / "bin" / "payload-dumper-go.exe",
+        root / "payload-dumper-go",
+        root / "payload-dumper-go.exe",
+    ]
     for item in candidates:
-        if item.is_file() and os.access(item, os.X_OK): return [str(item)]
-    found = shutil.which("payload-dumper-go")
-    return [found] if found else None
+        if item.is_file() and (os.name == "nt" or os.access(item, os.X_OK)):
+            return [str(item)]
+    for name in ("payload-dumper-go", "payload-dumper-go.exe"):
+        found = shutil.which(name)
+        if found:
+            return [found]
+    return None
 def _run(args: list[str], progress: Progress | None = None) -> subprocess.CompletedProcess[str]:
     cli=_find_cli()
     if not cli: raise BackendError("payload-dumper-go was not found. Install it or use the bundled AppImage.")
