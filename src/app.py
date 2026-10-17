@@ -232,8 +232,8 @@ class PayloadDumperApp(TkinterDnD.Tk):
         try:self.adb_log_process=subprocess.Popen([binary,"-s",serial,"logcat"],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,bufsize=1)
         except OSError as exc:window.destroy(); self.adb_log_window=self.adb_log_text=None; messagebox.showerror("Logcat failed",str(exc)); return
         ttk.Button(window,text="Stop logcat",command=self._stop_adb_logcat).pack(pady=(0,8))
+        process=self.adb_log_process
         def reader():
-            process=self.adb_log_process
             try:
                 if process.stdout:
                     for line in process.stdout:self.events.put(("adb_log_line",line.rstrip("\n")))
