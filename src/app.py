@@ -125,17 +125,22 @@ class PayloadDumperApp(TkinterDnD.Tk):
                         add(path, f"Mounted volume: {name}")
                 except Exception:
                     continue
+            # GIO exposes both mounted locations and not-yet-mounted volumes.
+            # Unmounted volumes can be mounted by Nautilus after a user selects
+            # them; here we only list accessible filesystem paths.
             for volume in monitor.get_volumes():
                 try:
                     mount = volume.get_mount()
                     if mount is not None:
                         continue
                     name = volume.get_name() or "Volume"
-                    mountpoint = getattr(volume, "get_default_location", None)
-                    if mountpoint:
-                        location = mountpoint()
-                        if location and location.get_path():
-                            add(location.get_path(), f"Volume: {name}")
+                    drive = volume.get_drive()
+                    if drive is not None:
+                        drive_name = drive.get_name() or "Drive"
+                        name = f"{drive_name} / {name}"
+                    # GVolume does not generally expose a usable filesystem path
+                    # until mounted. Keep it visible by adding a discoverable hint.
+                    self._append(f"Detected unmounted volume in GIO: {name}. Mount it in Files, then click Refresh drives.")
                 except Exception:
                     continue
         except (ImportError, ValueError, AttributeError) as exc:
