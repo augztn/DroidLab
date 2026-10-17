@@ -108,11 +108,11 @@ class PayloadDumperApp(TkinterDnD.Tk):
         logbox=ttk.Frame(root,style="Panel.TFrame",padding=10); logbox.pack(fill="x",expand=False); ttk.Label(logbox,text="ACTIVITY LOG",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); self.log=tk.Text(logbox,bg="#0b1220",fg="#d1d5db",insertbackground="white",relief="flat",wrap="word",font=("Monospace",11),height=4); self.log.pack(fill="x",expand=False,pady=6); self.log.configure(state="disabled"); self.progress=ttk.Progressbar(logbox,mode="indeterminate"); self.progress.pack(fill="x",pady=(2,0)); ttk.Label(root,textvariable=self.status,style="Muted.TLabel").pack(anchor="w",pady=(7,0))
         self._refresh_storage_locations(); self._enable_drop(self); self._enable_drop(src); self._enable_drop(self.source_entry); self._enable_drop(root); self._append("Drag payload.bin or an OTA .zip onto the window, or type/paste its full path and choose Use typed path. Inspect to select individual partitions."); self._append("Backend: payload-dumper-go (Apache-2.0). Some delta OTA operations are unsupported.")
     def _build_flash_tab(self, tab):
-        tab.columnconfigure(0, weight=3)
-        tab.columnconfigure(1, weight=2)
+        tab.columnconfigure(0, weight=7, uniform="flash_columns")
+        tab.columnconfigure(1, weight=4, uniform="flash_columns")
         tab.rowconfigure(2, weight=1)
 
-        ttk.Label(tab, text="Fastboot & Flashing", font=("Sans", 20, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 6))
+        ttk.Label(tab, text="Fastboot & Flashing", font=("Sans", 22, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 6))
         ttk.Label(tab, text="Drop an image to detect its likely partition. Review all details before flashing.", style="Muted.TLabel").grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 12))
 
         # Keep flashing controls in their own column so the command reference never overlaps them.
@@ -160,8 +160,9 @@ class PayloadDumperApp(TkinterDnD.Tk):
         ttk.Label(
             controls,
             text="WARNING: An incompatible image or wrong partition can prevent Android from booting. Filename matching is only a suggestion. Verify device compatibility and have a recovery plan.",
-            foreground="#fca5a5", wraplength=720, justify="left",
-        ).grid(row=3, column=0, sticky="ew", pady=(0, 10))
+            foreground="#fecaca", background="#1f2937", wraplength=900, justify="left",
+            font=("Sans", 11), padding=12,
+        ).grid(row=3, column=0, sticky="ew", pady=(2, 12))
         row = ttk.Frame(controls)
         row.grid(row=4, column=0, sticky="w")
         ttk.Button(row, text="Preview command", command=self._update_flash_preview).pack(side="left")
@@ -171,15 +172,15 @@ class PayloadDumperApp(TkinterDnD.Tk):
         reference = ttk.Frame(tab, style="Panel.TFrame", padding=14)
         reference.grid(row=2, column=1, sticky="new")
         ttk.Label(reference, text="ERASING & FORMATTING", background="#1f2937", foreground="#fb923c", font=("Sans", 13, "bold")).pack(anchor="w")
-        ttk.Label(reference, text="Select a Fastboot device on the left, then choose an operation. These actions can erase personal data.", background="#1f2937", foreground="#fca5a5", justify="left", wraplength=360).pack(anchor="w", pady=(8, 12))
+        ttk.Label(reference, text="Select a Fastboot device on the left, then choose an operation. These actions can erase personal data.", background="#1f2937", foreground="#fca5a5", justify="left", wraplength=520, font=("Sans", 11)).pack(anchor="w", pady=(8, 12))
         ttk.Button(reference, text="Erase cache", command=lambda: self._run_fastboot_maintenance("erase", "cache")).pack(fill="x", pady=3)
         ttk.Button(reference, text="Erase userdata", command=lambda: self._run_fastboot_maintenance("erase", "userdata")).pack(fill="x", pady=3)
         ttk.Button(reference, text="Wipe data (fastboot -w)", command=lambda: self._run_fastboot_maintenance("-w")).pack(fill="x", pady=3)
         self.maintenance_command = tk.StringVar(value="Select an operation to preview its command.")
         ttk.Label(reference, text="COMMAND", background="#1f2937", foreground="#93c5fd").pack(anchor="w", pady=(14, 5))
-        ttk.Label(reference, textvariable=self.maintenance_command, background="#0b1220", foreground="#f1f5f9", padding=9, justify="left", wraplength=360).pack(fill="x")
+        ttk.Label(reference, textvariable=self.maintenance_command, background="#0b1220", foreground="#f1f5f9", padding=9, justify="left", wraplength=520, font=("Monospace", 10)).pack(fill="x")
         self.maintenance_status = tk.StringVar(value="No maintenance command executed.")
-        ttk.Label(reference, textvariable=self.maintenance_status, background="#1f2937", foreground="#cbd5e1", wraplength=360, justify="left").pack(anchor="w", pady=(10, 0))
+        ttk.Label(reference, textvariable=self.maintenance_status, background="#1f2937", foreground="#cbd5e1", wraplength=520, justify="left", font=("Sans", 10)).pack(anchor="w", pady=(10, 0))
 
         self.flash_image.trace_add("write", lambda *_: self._on_flash_image_changed())
         self.flash_partition.trace_add("write", lambda *_: self._update_flash_preview())
