@@ -20,11 +20,17 @@ BACKEND_PATH="$(find "$WORK/backend" -type f -name payload-dumper-go -print -qui
 install -m 0755 "$BACKEND_PATH" "$APPDIR/opt/payload-dumper/bin/payload-dumper-go"
 XZ_PATH="$(command -v xz || true)"; [[ -n "$XZ_PATH" ]] || { echo "xz is required" >&2; exit 1; }
 install -m 0755 "$XZ_PATH" "$APPDIR/opt/payload-dumper/bin/xz"
-# Copy xz shared libraries and resolve them from the bundle where applicable.
+# Do not bundle glibc or the dynamic loader: doing so can override the host
+# system C library and break /usr/bin/env, bash, and other system tools.
+# AppImage runs on the host's glibc; only bundle xz itself.
 mkdir -p "$APPDIR/opt/payload-dumper/lib"
 if command -v ldd >/dev/null; then
   ldd "$XZ_PATH" | awk '/=> \/|^[[:space:]]*\// {for (i=1;i<=NF;i++) if ($i ~ /^\//) {print $i; break}}' | sort -u | while read -r dep; do
-    [[ -f "$dep" ]] && cp -L "$dep" "$APPDIR/opt/payload-dumper/lib/$(basename "$dep")"
+    [[ -f "$dep" ]] || continue
+    case "$(basename "$dep")" in
+      libc.so*|ld-linux*.so*|ld-*.so*) continue ;;
+    esac
+    cp -L "$dep" "$APPDIR/opt/payload-dumper/lib/$(basename "$dep")"
   done
 fi
 cat > "$APPDIR/usr/bin/payload-dumper-gui" <<'LAUNCH'
