@@ -1,48 +1,68 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
-
 PYTHON="${PYTHON:-python3}"
-APP_NAME="Payload-Dumper"
-VERSION="${VERSION:-0.1.0}"
-ARCH="${ARCH:-x86_64}"
-BUILD_DIR="${ROOT}/build"
-APPDIR="${ROOT}/AppDir"
-DIST_DIR="${ROOT}/dist"
-
-command -v "$PYTHON" >/dev/null || { echo "python3 is required" >&2; exit 1; }
-"$PYTHON" -c 'import tkinter' || {
-  echo "Python Tkinter is missing. Install python3-tk (Ubuntu/Debian), python3-tkinter (Fedora), or tk (Arch)." >&2
-  exit 1
-}
-
-rm -rf "$APPDIR"
-mkdir -p "$BUILD_DIR" "$DIST_DIR" "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/icons/hicolor/scalable/apps"
-
-install -m 0644 src/app.py "$APPDIR/usr/bin/app.py"
-install -m 0644 src/payload_dumper.py "$APPDIR/usr/bin/payload_dumper.py"
-cat > "$APPDIR/usr/bin/payload-dumper" <<'LAUNCH'
+APP_NAME="Payload-Dumper"; VERSION="${VERSION:-0.1.0}"; ARCH="${ARCH:-x86_64}"
+BACKEND_VERSION="${BACKEND_VERSION:-2.1.0}"
+APPDIR="$ROOT/AppDir"; DIST_DIR="$ROOT/dist"; WORK="$ROOT/build/appimage-work"
+command -v "$PYTHON" >/dev/null || { echo "python3 is required to build" >&2; exit 1; }
+"$PYTHON" -c "import tkinter" || { echo "Tkinter is required in the build environment" >&2; exit 1; }
+"$PYTHON" -m PyInstaller --version >/dev/null 2>&1 || { echo "Install PyInstaller with: python3 -m pip install pyinstaller" >&2; exit 1; }
+command -v wget >/dev/null || { echo "wget is required" >&2; exit 1; }
+command -v tar >/dev/null || { echo "tar is required" >&2; exit 1; }
+rm -rf "$APPDIR" "$WORK"; mkdir -p "$WORK" "$DIST_DIR" "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/icons/hicolor/scalable/apps" "$APPDIR/opt/payload-dumper/src" "$APPDIR/opt/payload-dumper/bin"
+"$PYTHON" -m PyInstaller --noconfirm --clean --windowed --name payload-dumper-gui --distpath "$WORK/pyinstaller-dist" --workpath "$WORK/pyinstaller-build" --specpath "$WORK" --hidden-import=tkinter.ttk src/app.py
+install -m 0755 "$WORK/pyinstaller-dist/payload-dumper-gui" "$APPDIR/usr/bin/payload-dumper-gui"
+install -m 0644 src/payload_dumper.py "$APPDIR/opt/payload-dumper/src/payload_dumper.py"
+BACKEND_ARCH="linux_amd64"; if [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then BACKEND_ARCH="linux_arm64"; fi
+BACKEND_ARCHIVE="payload-dumper-go_${BACKEND_VERSION}_${BACKEND_ARCH}.tar.gz"
+wget -q --show-progress "https://github.com/ssut/payload-dumper-go/releases/download/${BACKEND_VERSION}/${BACKEND_ARCHIVE}" -O "$WORK/$BACKEND_ARCHIVE"
+mkdir -p "$WORK/backend"; tar -xzf "$WORK/$BACKEND_ARCHIVE" -C "$WORK/backend"
+BACKEND_PATH="$(find "$WORK/backend" -type f -name payload-dumper-go -print -quit)"
+[[ -n "$BACKEND_PATH" ]] || { echo "payload-dumper-go not found in release archive" >&2; exit 1; }
+install -m 0755 "$BACKEND_PATH" "$APPDIR/opt/payload-dumper/bin/payload-dumper-go"
+# The backend shell-outs to xz for certain payload operations. Bundle its executable if available.
+XZ_PATH="$(command -v xz || true)"; [[ -n "$XZ_PATH" ]] || { echo "xz is required" >&2; exit 1; }
+install -m 0755 "$XZ_PATH" "$APPDIR/opt/payload-dumper/bin/xz"
+cat > "$APPDIR/usr/bin/payload-dumper-gui" <<'LAUNCH'
+#!/usr/bin/env bash
+set -euo pipefail
+HERE="$(cd -- "$(dirname -- "$0")/../.." && pwd)"
+export PATH="$HERE/opt/payload-dumper/bin:$PATH"
+export PYTHONPATH="$HERE/opt/payload-dumper/src${PYTHONPATH:+:$PYTHONPATH}"
+exec "$HERE/usr/bin/payload-dumper-gui-bin" "$@"
+LAUNCH
+# Rename frozen executable and keep launcher as a wrapper for the bundled backend and adapter.
+mv "$APPDIR/usr/bin/payload-dumper-gui" "$APPDIR/usr/bin/payload-dumper-gui-bin"
+cat > "$APPDIR/usr/bin/payload-dumper-gui" <<'LAUNCH'
+#!/usr/bin/env bash
+set -euo pipefail
+HERE="$(cd -- "$(dirname -- "$0")/../.." && pwd)"
+export PATH="$HERE/opt/payload-dumper/bin:$PATH"
+export PYTHONPATH="$HERE/opt/payload-dumper/src${PYTHONPATH:+:$PYTHONPATH}"
+exec "$HERE/usr/bin/payload-dumper-gui-bin" "$@"
+LAUNCH
+chmod 0755 "$APPDIR/usr/bin/payload-dumper-gui" "$APPDIR/usr/bin/payload-dumper-gui-bin"
+cat > "$APPDIR/AppRun" <<'RUN'
 #!/usr/bin/env bash
 set -euo pipefail
 HERE="$(cd -- "$(dirname -- "$0")" && pwd)"
-export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"
-exec python3 "$HERE/app.py" "$@"
-LAUNCH
-chmod 0755 "$APPDIR/usr/bin/payload-dumper"
-
+export PATH="$HERE/opt/payload-dumper/bin:$HERE/usr/bin:$PATH"
+export PYTHONPATH="$HERE/opt/payload-dumper/src${PYTHONPATH:+:$PYTHONPATH}"
+exec "$HERE/usr/bin/payload-dumper-gui" "$@"
+RUN
+chmod 0755 "$APPDIR/AppRun"
 cat > "$APPDIR/usr/share/applications/payload-dumper.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application
 Name=Payload Dumper
-Comment=Extract Android OTA payload partitions
-Exec=payload-dumper
+Comment=Extract Android OTA partitions
+Exec=payload-dumper-gui
 Icon=payload-dumper
 Categories=Utility;System;
 Terminal=false
 DESKTOP
-
 cat > "$APPDIR/usr/share/icons/hicolor/scalable/apps/payload-dumper.svg" <<'SVG'
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
   <rect x="8" y="8" width="112" height="112" rx="24" fill="#172554"/>
@@ -50,24 +70,11 @@ cat > "$APPDIR/usr/share/icons/hicolor/scalable/apps/payload-dumper.svg" <<'SVG'
   <path d="M82 78l18 10-18 10z" fill="#34d399"/>
 </svg>
 SVG
-
-cat > "$APPDIR/AppRun" <<'RUN'
-#!/usr/bin/env bash
-HERE="$(cd -- "$(dirname -- "$0")" && pwd)"
-export PATH="$HERE/usr/bin:$PATH"
-exec "$HERE/usr/bin/payload-dumper" "$@"
-RUN
-chmod 0755 "$APPDIR/AppRun"
 cp "$APPDIR/usr/share/applications/payload-dumper.desktop" "$APPDIR/payload-dumper.desktop"
 cp "$APPDIR/usr/share/icons/hicolor/scalable/apps/payload-dumper.svg" "$APPDIR/payload-dumper.svg"
-printf '0.1.0\n' > "$APPDIR/VERSION"
-printf 'x86_64\n' > "$APPDIR/ARCH"
-
-if command -v appimagetool >/dev/null; then
-  ARCH="$ARCH" appimagetool "$APPDIR" "$DIST_DIR/${APP_NAME}-${VERSION}-${ARCH}.AppImage"
-  echo "Created $DIST_DIR/${APP_NAME}-${VERSION}-${ARCH}.AppImage"
-else
-  echo "AppDir created at $APPDIR."
-  echo "Install appimagetool to create an AppImage, or run scripts/run-portable.sh for local development."
-  exit 2
-fi
+printf "%s\n" "$VERSION" > "$APPDIR/VERSION"; printf "%s\n" "$ARCH" > "$APPDIR/ARCH"
+mkdir -p "$APPDIR/usr/share/licenses/payload-dumper-go"
+wget -q "https://raw.githubusercontent.com/ssut/payload-dumper-go/main/LICENSE" -O "$APPDIR/usr/share/licenses/payload-dumper-go/LICENSE"
+if ! command -v appimagetool >/dev/null; then echo "appimagetool not found; AppDir prepared at $APPDIR" >&2; exit 2; fi
+ARCH="$ARCH" appimagetool "$APPDIR" "$DIST_DIR/${APP_NAME}-${VERSION}-${ARCH}.AppImage"
+echo "Created $DIST_DIR/${APP_NAME}-${VERSION}-${ARCH}.AppImage"
