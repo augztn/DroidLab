@@ -1,0 +1,51 @@
+name: Linux build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install GUI and test dependencies
+        run: sudo apt-get update && sudo apt-get install -y python3-tk
+      - name: Compile-check Python
+        run: python3 -m compileall -q src tests
+      - name: Run tests
+        run: PYTHONPATH=. python3 -m unittest discover -s tests -v
+
+  appimage:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk wget file
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O /tmp/appimagetool
+          chmod +x /tmp/appimagetool
+          sudo install /tmp/appimagetool /usr/local/bin/appimagetool
+      - name: Build AppImage
+        run: VERSION="${GITHUB_REF_NAME#v}" scripts/build-linux.sh
+      - name: Generate checksum
+        run: cd dist && sha256sum *.AppImage > SHA256SUMS
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.AppImage
+            dist/SHA256SUMS
