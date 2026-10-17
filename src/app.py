@@ -7,11 +7,13 @@ from tkinter import filedialog, messagebox, ttk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from pathlib import Path
 from payload_dumper import BackendError, extract, inspect_source, sha256_file
+
+APP_NAME = "Payload Dumper"  # Change this single value when rebranding the app.
 class PayloadDumperApp(TkinterDnD.Tk):
     def __init__(self):
-        super().__init__(); self.title("Payload Dumper"); self.geometry("1280x820"); self.minsize(900,650); self.configure(bg="#111827")
+        super().__init__(); self.title(APP_NAME); self.geometry("1280x820"); self.minsize(900,650); self.configure(bg="#111827")
         self.events=queue.Queue(); self.worker=None; self.cancel_event=threading.Event()
-        self.source=tk.StringVar(); self.output=tk.StringVar(value=str(Path.home()/"Payload-Dumper-Output")); self.fingerprint=tk.BooleanVar(value=True); self.status=tk.StringVar(value="Ready")
+        self.source=tk.StringVar(); self.output=tk.StringVar(value=str(Path.home()/APP_NAME)); self.fingerprint=tk.BooleanVar(value=True); self.status=tk.StringVar(value="Ready")
         self.parts={}; self.part_vars={}; self._build(); self.after(100,self._poll_events)
     def _build(self):
         s=ttk.Style(self)
@@ -19,10 +21,10 @@ class PayloadDumperApp(TkinterDnD.Tk):
         except tk.TclError:pass
         s.configure("TFrame",background="#111827"); s.configure("Panel.TFrame",background="#1f2937"); s.configure("TLabel",background="#111827",foreground="#e5e7eb",font=("Sans",11)); s.configure("Title.TLabel",font=("Sans",25,"bold"),foreground="#f9fafb"); s.configure("Muted.TLabel",foreground="#cbd5e1"); s.configure("TButton",padding=(11,7),font=("Sans",10)); s.configure("TCheckbutton",background="#1f2937",foreground="#f9fafb",font=("Sans",10)); s.configure("TEntry",padding=5,font=("Sans",11)); s.configure("TCombobox",padding=5,font=("Sans",10)); s.configure("Treeview",background="#0b1220",fieldbackground="#0b1220",foreground="#f1f5f9",rowheight=30,font=("Sans",10)); s.configure("Treeview.Heading",background="#374151",foreground="#ffffff",font=("Sans",10,"bold"),padding=(7,7)); s.map("Treeview",background=[("selected","#1d4ed8")],foreground=[("selected","#ffffff")])
         root=ttk.Frame(self,padding=20); root.pack(fill="both",expand=True); h=ttk.Frame(root); h.pack(fill="x",pady=(0,14))
-        ttk.Label(h,text="Payload Dumper",style="Title.TLabel").pack(anchor="w"); ttk.Label(h,text="Android OTA partition extractor · Linux desktop",style="Muted.TLabel").pack(anchor="w",pady=(3,0))
+        ttk.Label(h,text=APP_NAME,style="Title.TLabel").pack(anchor="w"); ttk.Label(h,text="Android OTA partition extractor · Linux desktop",style="Muted.TLabel").pack(anchor="w",pady=(3,0))
         src=ttk.Frame(root,style="Panel.TFrame",padding=12); src.pack(fill="x",pady=(0,10)); ttk.Label(src,text="INPUT FILE PATH — TYPE OR PASTE THE FULL PATH",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(src,style="Panel.TFrame"); row.pack(fill="x",pady=(6,0)); self.source_entry=ttk.Entry(row,textvariable=self.source); self.source_entry.pack(side="left",fill="x",expand=True,ipady=4); self.source_entry.bind("<Return>",lambda _event:self._apply_manual_source_path()); ttk.Button(row,text="Browse…",command=self._browse_source).pack(side="left",padx=(7,0)); actions=ttk.Frame(src,style="Panel.TFrame"); actions.pack(fill="x",pady=(7,0)); ttk.Button(actions,text="Use typed path",command=self._apply_manual_source_path).pack(side="left"); ttk.Button(actions,text="Inspect partitions",command=self._inspect).pack(side="left",padx=(7,0))
         out=ttk.Frame(root,style="Panel.TFrame",padding=12); out.pack(fill="x",pady=(0,10)); ttk.Label(out,text="OUTPUT DIRECTORY",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(out,style="Panel.TFrame"); row.pack(fill="x",pady=(6,0)); ttk.Entry(row,textvariable=self.output).pack(side="left",fill="x",expand=True,ipady=4); ttk.Button(row,text="Choose…",command=self._browse_output).pack(side="left",padx=(7,0))
-        ttk.Label(out,text="STORAGE LOCATIONS — INTERNAL & EXTERNAL DRIVES",background="#1f2937",foreground="#93c5fd").pack(anchor="w",pady=(9,0)); drive_row=ttk.Frame(out,style="Panel.TFrame"); drive_row.pack(fill="x",pady=(5,0)); self.storage_var=tk.StringVar(); self.storage_combo=ttk.Combobox(drive_row,textvariable=self.storage_var,state="readonly"); self.storage_combo.pack(fill="x",expand=True); drive_actions=ttk.Frame(out,style="Panel.TFrame"); drive_actions.pack(fill="x",pady=(6,0)); ttk.Button(drive_actions,text="Refresh drives",command=self._refresh_storage_locations).pack(side="left"); ttk.Button(drive_actions,text="Browse selected drive",command=self._browse_selected_storage).pack(side="left",padx=(7,0)); ttk.Button(drive_actions,text="Use selected drive for output",command=self._use_selected_storage).pack(side="left",padx=(7,0));
+        ttk.Label(out,text="MOUNTED REMOVABLE DRIVES",background="#1f2937",foreground="#93c5fd").pack(anchor="w",pady=(9,0)); drive_row=ttk.Frame(out,style="Panel.TFrame"); drive_row.pack(fill="x",pady=(5,0)); self.storage_var=tk.StringVar(); self.storage_combo=ttk.Combobox(drive_row,textvariable=self.storage_var,state="readonly"); self.storage_combo.pack(fill="x",expand=True); drive_actions=ttk.Frame(out,style="Panel.TFrame"); drive_actions.pack(fill="x",pady=(6,0)); ttk.Button(drive_actions,text="Refresh drives",command=self._refresh_storage_locations).pack(side="left"); ttk.Button(drive_actions,text="Browse selected drive",command=self._browse_selected_storage).pack(side="left",padx=(7,0)); ttk.Button(drive_actions,text="Use selected drive for output",command=self._use_selected_storage).pack(side="left",padx=(7,0));
         middle=ttk.Frame(root); middle.pack(fill="both",expand=True,pady=(0,10)); panel=ttk.Frame(middle,style="Panel.TFrame",padding=10); panel.pack(side="left",fill="both",expand=True,padx=(0,10)); ttk.Label(panel,text="PARTITIONS (no selection = all)",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); actions=ttk.Frame(panel,style="Panel.TFrame"); actions.pack(fill="x",pady=5); ttk.Button(actions,text="Select all",command=lambda:self._select_all(True)).pack(side="left"); ttk.Button(actions,text="Select none",command=lambda:self._select_all(False)).pack(side="left",padx=5)
         self.tree=ttk.Treeview(panel,columns=("size",),show="tree headings",selectmode="none"); self.tree.heading("#0",text="Partition"); self.tree.heading("size",text="Size"); self.tree.column("#0",width=260,minwidth=180,stretch=True); self.tree.column("size",width=120,minwidth=100,anchor="e",stretch=False); self.tree.pack(fill="both",expand=True); self.tree.bind("<Button-1>",self._toggle)
         side=ttk.Frame(middle,style="Panel.TFrame",padding=14,width=250); side.pack(side="right",fill="y"); side.pack_propagate(False); ttk.Label(side,text="OPTIONS",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); ttk.Checkbutton(side,text="Generate SHA-256\nfingerprints",variable=self.fingerprint).pack(anchor="w",pady=(12,4)); ttk.Label(side,text="Fingerprints are separate\nfrom the backend’s OTA\nverification.",background="#1f2937",foreground="#9ca3af",justify="left").pack(anchor="w",pady=8); self.start_button=ttk.Button(side,text="Extract payload",command=self._start); self.start_button.pack(fill="x",pady=(8,5)); self.cancel_button=ttk.Button(side,text="Cancel",command=self._cancel,state="disabled"); self.cancel_button.pack(fill="x")
@@ -90,27 +92,32 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self._append("Input path set manually: " + resolved)
 
     def _refresh_storage_locations(self):
-        """Refresh internal partitions and removable drives from Linux mount information."""
+        """List user-mounted removable drives, not system partitions or virtual filesystems."""
         locations = []
         seen_paths = set()
+        user = os.environ.get("USER", "")
+        # These are the common desktop mount roots for removable media.
+        allowed_roots = [Path("/run/media") / user, Path("/media") / user]
+        allowed_roots = [p.resolve() for p in allowed_roots if user]
 
         def add(path, label):
             try:
                 resolved = Path(path).expanduser().resolve()
-                if resolved.is_dir() and os.access(resolved, os.R_OK | os.X_OK):
-                    key = str(resolved)
-                    if key not in seen_paths:
-                        seen_paths.add(key)
-                        locations.append((f"{label} — {key}", key))
+                # Keep the selector focused on user-mounted removable drives.
+                # Do not show /, /home, /boot, /run/user/*/gvfs, or other system mounts.
+                if not any(resolved == root or root in resolved.parents for root in allowed_roots):
+                    return
+                if not resolved.is_dir() or not os.access(resolved, os.R_OK | os.X_OK):
+                    return
+                key = str(resolved)
+                if key not in seen_paths:
+                    seen_paths.add(key)
+                    locations.append((f"{label} — {key}", key))
             except (OSError, RuntimeError):
                 pass
 
-        add("/", "Internal filesystem")
-        add(Path.home(), "Home directory")
-
-        # Nautilus discovers user-visible volumes through GIO/GVfs. Use the
-        # same GIO-backed view when PyGObject is installed, which also handles
-        # desktop-managed mounts that do not live under /media or /mnt.
+        # GIO provides desktop-managed mount names; only keep paths under the
+        # user's conventional removable-media mount roots.
         try:
             import gi
             gi.require_version("Gio", "2.0")
@@ -118,92 +125,37 @@ class PayloadDumperApp(TkinterDnD.Tk):
             monitor = Gio.VolumeMonitor.get()
             for mount in monitor.get_mounts():
                 try:
-                    root = mount.get_root()
-                    path = root.get_path()
+                    path = mount.get_root().get_path()
                     if path:
-                        name = mount.get_name() or Path(path).name or path
-                        add(path, f"Mounted volume: {name}")
-                except Exception:
-                    continue
-            # GIO exposes both mounted locations and not-yet-mounted volumes.
-            # Unmounted volumes can be mounted by Nautilus after a user selects
-            # them; here we only list accessible filesystem paths.
-            for volume in monitor.get_volumes():
-                try:
-                    mount = volume.get_mount()
-                    if mount is not None:
-                        continue
-                    name = volume.get_name() or "Volume"
-                    drive = volume.get_drive()
-                    if drive is not None:
-                        drive_name = drive.get_name() or "Drive"
-                        name = f"{drive_name} / {name}"
-                    # GVolume does not generally expose a usable filesystem path
-                    # until mounted. Keep it visible by adding a discoverable hint.
-                    self._append(f"Detected unmounted volume in GIO: {name}. Mount it in Files, then click Refresh drives.")
+                        add(path, mount.get_name() or Path(path).name or "Mounted drive")
                 except Exception:
                     continue
         except (ImportError, ValueError, AttributeError) as exc:
-            self._append(f"GIO volume discovery unavailable; using Linux mount table: {exc}")
+            self._append(f"GIO volume discovery unavailable; scanning mounted media folders instead: {exc}")
 
-        # Fallback for systems without GIO bindings. It detects disk-backed
-        # internal partitions and removable / network mounts from /proc.
-        disk_filesystems = {
-            "ext2", "ext3", "ext4", "btrfs", "xfs", "f2fs", "vfat", "fat",
-            "fat32", "exfat", "ntfs", "ntfs3", "fuseblk", "udf", "hfsplus",
-            "apfs", "zfs", "cifs", "smb3", "nfs", "nfs4", "fuse.sshfs", "fuse.gvfsd-fuse"
-        }
-        try:
-            with open("/proc/self/mounts", "r", encoding="utf-8") as mounts:
-                for line in mounts:
-                    fields = line.split()
-                    if len(fields) < 3:
-                        continue
-                    device, mountpoint, filesystem = fields[:3]
-                    for escaped, actual in (("\\040", " "), ("\\011", "\t"), ("\\134", "\\"), ("\\043", "#")):
-                        device = device.replace(escaped, actual)
-                        mountpoint = mountpoint.replace(escaped, actual)
-                    if mountpoint == "/" or (filesystem not in disk_filesystems and not device.startswith("/dev/")):
-                        continue
-                    external = mountpoint.startswith(("/media/", "/run/media/", "/mnt/", "/Volumes/"))
-                    user_mount = "/gvfs/" in mountpoint or mountpoint.startswith("/run/user/")
-                    if external or user_mount:
-                        label = "External / removable drive"
-                    elif device.startswith("/dev/") or filesystem in disk_filesystems:
-                        label = "Internal / mounted volume"
-                    else:
-                        continue
-                    add(mountpoint, f"{label} ({device})")
-        except OSError:
-            pass
-
-        # Fallback for systems that expose drives in conventional mount folders
-        # but do not provide useful /proc mount information.
-        for root in (Path("/run/media"), Path("/media"), Path("/mnt"), Path("/Volumes")):
+        # Filesystem fallback for desktops where GIO bindings are unavailable.
+        for root in allowed_roots:
             if not root.is_dir():
                 continue
             try:
                 for candidate in root.iterdir():
                     if candidate.is_dir():
-                        add(candidate, "External / mounted drive")
-                        try:
-                            for child in candidate.iterdir():
-                                if child.is_dir():
-                                    add(child, "External / mounted drive")
-                        except OSError:
-                            pass
+                        add(candidate, "Mounted removable drive")
             except OSError:
-                pass
+                continue
 
+        locations.sort(key=lambda item: item[1].casefold())
         self._storage_locations = locations
         labels = [label for label, _path in locations]
         self.storage_combo["values"] = labels
         current = self.storage_var.get()
         self.storage_var.set(current if current in labels else (labels[0] if labels else ""))
-        self.status.set(f"Storage refreshed: {len(locations)} accessible location(s)")
-        self._append(f"Storage list refreshed: {len(locations)} accessible location(s)")
-        if not locations:
-            self.status.set("No accessible storage locations found. Type a path or use Browse.")
+        if locations:
+            self.status.set(f"Found {len(locations)} mounted removable drive(s)")
+            self._append(f"Drive list refreshed: {len(locations)} mounted removable drive(s)")
+        else:
+            self.status.set("No mounted removable drives found. Use Browse or Choose output.")
+            self._append("Drive list refreshed: no user-mounted removable drives found.")
 
     def _selected_storage_path(self):
         selected = self.storage_var.get()
