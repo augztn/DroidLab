@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"; cd "$ROOT"
-PYTHON="${PYTHON:-python3}"; APP_NAME="Payload-Dumper"; VERSION="${VERSION:-0.1.0}"; ARCH="${ARCH:-x86_64}"; BACKEND_VERSION="${BACKEND_VERSION:-2.1.0}"
+PYTHON="${PYTHON:-python3}"; APP_NAME="FlashLab"; VERSION="${VERSION:-0.1.0}"; ARCH="${ARCH:-x86_64}"; BACKEND_VERSION="${BACKEND_VERSION:-2.1.0}"
 APPDIR="$ROOT/AppDir"; DIST_DIR="$ROOT/dist"; WORK="$ROOT/build/appimage-work"
 command -v "$PYTHON" >/dev/null || { echo "python3 is required" >&2; exit 1; }
 "$PYTHON" -c "import tkinter" || { echo "Tkinter is required in the build environment" >&2; exit 1; }
@@ -14,7 +14,7 @@ PYI_GIO_ARGS=()
 if "$PYTHON" -c "import gi; gi.require_version('Gio', '2.0'); from gi.repository import Gio" >/dev/null 2>&1; then
   PYI_GIO_ARGS+=(--hidden-import=gi --hidden-import=gi.repository.Gio)
 fi
-"$PYTHON" -m PyInstaller --noconfirm --clean --onefile --windowed --name payload-dumper-gui --distpath "$WORK/pyinstaller-dist" --workpath "$WORK/pyinstaller-build" --specpath "$WORK" --paths src --hidden-import=payload_dumper --hidden-import=tkinter.ttk "${PYI_GIO_ARGS[@]}" --collect-all tkinter --collect-all tkinterdnd2 src/app.py
+"$PYTHON" -m PyInstaller --noconfirm --clean --onefile --windowed --name flashlab-gui --distpath "$WORK/pyinstaller-dist" --workpath "$WORK/pyinstaller-build" --specpath "$WORK" --paths src --hidden-import=payload_dumper --hidden-import=tkinter.ttk "${PYI_GIO_ARGS[@]}" --collect-all tkinter --collect-all tkinterdnd2 src/app.py
 install -m 0755 "$WORK/pyinstaller-dist/payload-dumper-gui" "$APPDIR/usr/bin/payload-dumper-gui-bin"
 BACKEND_ARCH="linux_amd64"; if [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then BACKEND_ARCH="linux_arm64"; fi
 BACKEND_ARCHIVE="payload-dumper-go_${BACKEND_VERSION}_${BACKEND_ARCH}.tar.gz"
@@ -56,17 +56,17 @@ export LD_LIBRARY_PATH="$HERE/opt/payload-dumper/lib${LD_LIBRARY_PATH:+:$LD_LIBR
 exec "$HERE/usr/bin/payload-dumper-gui" "$@"
 RUN
 chmod 0755 "$APPDIR/AppRun"
-cat > "$APPDIR/usr/share/applications/payload-dumper.desktop" <<'DESKTOP'
+cat > "$APPDIR/usr/share/applications/flashlab.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application
-Name=Payload Dumper
-Comment=Extract Android OTA partitions
+Name=FlashLab
+Comment=Android firmware extraction and Fastboot flashing
 Exec=payload-dumper-gui
 Icon=payload-dumper
 Categories=Utility;System;
 Terminal=false
 DESKTOP
-cat > "$APPDIR/usr/share/icons/hicolor/scalable/apps/payload-dumper.svg" <<'SVG'
+cat > "$APPDIR/usr/share/icons/hicolor/scalable/apps/flashlab.svg" <<'SVG'
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
   <rect x="8" y="8" width="112" height="112" rx="24" fill="#172554"/>
   <path d="M32 34h64v12H32zm0 24h64v12H32zm0 24h42v12H32z" fill="#93c5fd"/>
