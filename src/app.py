@@ -32,28 +32,84 @@ class PayloadDumperApp(TkinterDnD.Tk):
         logbox=ttk.Frame(root,style="Panel.TFrame",padding=10); logbox.pack(fill="x",expand=False); ttk.Label(logbox,text="ACTIVITY LOG",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); self.log=tk.Text(logbox,bg="#0b1220",fg="#d1d5db",insertbackground="white",relief="flat",wrap="word",font=("Monospace",11),height=4); self.log.pack(fill="x",expand=False,pady=6); self.log.configure(state="disabled"); self.progress=ttk.Progressbar(logbox,mode="indeterminate"); self.progress.pack(fill="x",pady=(2,0)); ttk.Label(root,textvariable=self.status,style="Muted.TLabel").pack(anchor="w",pady=(7,0))
         self._refresh_storage_locations(); self._enable_drop(self); self._enable_drop(src); self._enable_drop(self.source_entry); self._enable_drop(root); self._append("Drag payload.bin or an OTA .zip onto the window, or type/paste its full path and choose Use typed path. Inspect to select individual partitions."); self._append("Backend: payload-dumper-go (Apache-2.0). Some delta OTA operations are unsupported.")
     def _build_flash_tab(self, tab):
-        tab.columnconfigure(0, weight=1)
-        ttk.Label(tab, text="Fastboot & Flashing", font=("Sans", 20, "bold")).grid(row=0, column=0, sticky="w", pady=(0, 6))
-        ttk.Label(tab, text="Drop an image to detect its likely partition. Review all details before flashing.", style="Muted.TLabel").grid(row=1, column=0, sticky="w", pady=(0, 12))
-        box = ttk.Frame(tab, style="Panel.TFrame", padding=14); box.grid(row=2, column=0, sticky="ew", pady=(0, 10))
+        tab.columnconfigure(0, weight=3)
+        tab.columnconfigure(1, weight=2)
+        tab.rowconfigure(2, weight=1)
+
+        ttk.Label(tab, text="Fastboot & Flashing", font=("Sans", 20, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 6))
+        ttk.Label(tab, text="Drop an image to detect its likely partition. Review all details before flashing.", style="Muted.TLabel").grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 12))
+
+        # Keep flashing controls in their own column so the command reference never overlaps them.
+        controls = ttk.Frame(tab)
+        controls.grid(row=2, column=0, sticky="nsew", padx=(0, 12))
+        controls.columnconfigure(0, weight=1)
+
+        box = ttk.Frame(controls, style="Panel.TFrame", padding=14)
+        box.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         ttk.Label(box, text="IMAGE FILE (.img)", background="#1f2937", foreground="#93c5fd").pack(anchor="w")
-        row = ttk.Frame(box, style="Panel.TFrame"); row.pack(fill="x", pady=(6, 0))
-        self.flash_image = tk.StringVar(); self.flash_entry = ttk.Entry(row, textvariable=self.flash_image); self.flash_entry.pack(side="left", fill="x", expand=True, ipady=5)
-        ttk.Button(row, text="Browse…", command=self._browse_flash_image).pack(side="left", padx=(8, 0)); self._enable_drop(box); self._enable_drop(self.flash_entry); self._enable_drop(tab)
-        device = ttk.Frame(tab, style="Panel.TFrame", padding=14); device.grid(row=3, column=0, sticky="ew", pady=(0, 10))
+        row = ttk.Frame(box, style="Panel.TFrame")
+        row.pack(fill="x", pady=(6, 0))
+        self.flash_image = tk.StringVar()
+        self.flash_entry = ttk.Entry(row, textvariable=self.flash_image)
+        self.flash_entry.pack(side="left", fill="x", expand=True, ipady=5)
+        ttk.Button(row, text="Browse…", command=self._browse_flash_image).pack(side="left", padx=(8, 0))
+        self._enable_drop(box)
+        self._enable_drop(self.flash_entry)
+        self._enable_drop(tab)
+
+        device = ttk.Frame(controls, style="Panel.TFrame", padding=14)
+        device.grid(row=1, column=0, sticky="ew", pady=(0, 10))
         ttk.Label(device, text="FASTBOOT DEVICE", background="#1f2937", foreground="#93c5fd").pack(anchor="w")
-        row = ttk.Frame(device, style="Panel.TFrame"); row.pack(fill="x", pady=(6, 0))
-        self.fastboot_device = tk.StringVar(); self.device_combo = ttk.Combobox(row, textvariable=self.fastboot_device, state="readonly"); self.device_combo.pack(side="left", fill="x", expand=True)
+        row = ttk.Frame(device, style="Panel.TFrame")
+        row.pack(fill="x", pady=(6, 0))
+        self.fastboot_device = tk.StringVar()
+        self.device_combo = ttk.Combobox(row, textvariable=self.fastboot_device, state="readonly")
+        self.device_combo.pack(side="left", fill="x", expand=True)
         ttk.Button(row, text="Refresh devices", command=self._refresh_fastboot_devices).pack(side="left", padx=(8, 0))
         ttk.Label(device, text="Target partition", background="#1f2937", foreground="#93c5fd").pack(anchor="w", pady=(10, 0))
-        self.flash_partition = tk.StringVar(); self.partition_combo = ttk.Combobox(device, textvariable=self.flash_partition, values=("boot", "vendor", "vendor_boot", "init_boot", "dtbo", "vbmeta", "recovery", "system", "product", "odm", "system_ext", "vbmeta_system", "vbmeta_vendor"), state="normal"); self.partition_combo.pack(fill="x", pady=(5, 0))
-        preview = ttk.Frame(tab, style="Panel.TFrame", padding=14); preview.grid(row=4, column=0, sticky="ew", pady=(0, 10))
+        self.flash_partition = tk.StringVar()
+        self.partition_combo = ttk.Combobox(
+            device, textvariable=self.flash_partition,
+            values=("boot", "vendor", "vendor_boot", "init_boot", "dtbo", "vbmeta", "recovery", "system", "product", "odm", "system_ext", "vbmeta_system", "vbmeta_vendor"),
+            state="normal",
+        )
+        self.partition_combo.pack(fill="x", pady=(5, 0))
+
+        preview = ttk.Frame(controls, style="Panel.TFrame", padding=14)
+        preview.grid(row=2, column=0, sticky="ew", pady=(0, 10))
         ttk.Label(preview, text="COMMAND PREVIEW", background="#1f2937", foreground="#93c5fd").pack(anchor="w")
         self.flash_command = tk.StringVar(value="Select an image and Fastboot device to preview the command.")
-        ttk.Label(preview, textvariable=self.flash_command, background="#0b1220", foreground="#f1f5f9", padding=10, wraplength=1000, justify="left").pack(fill="x", pady=(6, 0))
-        ttk.Label(tab, text="WARNING: An incompatible image or wrong partition can prevent Android from booting. Filename matching is only a suggestion. Verify device compatibility and have a recovery plan.", foreground="#fca5a5", wraplength=1100, justify="left").grid(row=5, column=0, sticky="ew", pady=(0, 10))
-        row = ttk.Frame(tab); row.grid(row=6, column=0, sticky="w"); ttk.Button(row, text="Preview command", command=self._update_flash_preview).pack(side="left"); ttk.Button(row, text="Flash image…", command=self._flash_image).pack(side="left", padx=(8, 0))
-        self.flash_image.trace_add("write", lambda *_: self._on_flash_image_changed()); self.flash_partition.trace_add("write", lambda *_: self._update_flash_preview()); self.fastboot_device.trace_add("write", lambda *_: self._update_flash_preview())
+        ttk.Label(preview, textvariable=self.flash_command, background="#0b1220", foreground="#f1f5f9", padding=10, wraplength=650, justify="left").pack(fill="x", pady=(6, 0))
+
+        ttk.Label(
+            controls,
+            text="WARNING: An incompatible image or wrong partition can prevent Android from booting. Filename matching is only a suggestion. Verify device compatibility and have a recovery plan.",
+            foreground="#fca5a5", wraplength=720, justify="left",
+        ).grid(row=3, column=0, sticky="ew", pady=(0, 10))
+        row = ttk.Frame(controls)
+        row.grid(row=4, column=0, sticky="w")
+        ttk.Button(row, text="Preview command", command=self._update_flash_preview).pack(side="left")
+        ttk.Button(row, text="Flash image…", command=self._flash_image).pack(side="left", padx=(8, 0))
+
+        # Destructive maintenance examples are informational only; they are never run by this panel.
+        reference = ttk.Frame(tab, style="Panel.TFrame", padding=14)
+        reference.grid(row=2, column=1, sticky="new")
+        ttk.Label(reference, text="FASTBOOT COMMAND REFERENCE", background="#1f2937", foreground="#93c5fd", font=("Sans", 12, "bold"), wraplength=360).pack(anchor="w")
+        ttk.Label(reference, text="Erasing & Formatting", background="#1f2937", foreground="#fb923c", font=("Sans", 13, "bold")).pack(anchor="w", pady=(14, 5))
+        ttk.Label(
+            reference,
+            text="Erase cache (if the device has a cache partition):\nfastboot erase cache\n\nErase user data:\nfastboot erase userdata\n\nWipe user data and cache where supported:\nfastboot -w",
+            background="#1f2937", foreground="#fdba74", justify="left", wraplength=360,
+        ).pack(anchor="w")
+        ttk.Label(
+            reference,
+            text="These commands can permanently delete data. Support varies by device and partition layout. Run commands manually only after confirming the target device and understanding the consequences.",
+            background="#1f2937", foreground="#fca5a5", justify="left", wraplength=360,
+        ).pack(anchor="w", pady=(14, 0))
+
+        self.flash_image.trace_add("write", lambda *_: self._on_flash_image_changed())
+        self.flash_partition.trace_add("write", lambda *_: self._update_flash_preview())
+        self.fastboot_device.trace_add("write", lambda *_: self._update_flash_preview())
 
     def _on_flash_image_changed(self):
         path = Path(self.flash_image.get().strip().strip(chr(34)).strip(chr(39)))
