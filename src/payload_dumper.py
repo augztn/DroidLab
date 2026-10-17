@@ -62,12 +62,15 @@ def extract(source: str, output_dir: str, selected: list[str] | None = None,
     except OSError as exc: raise BackendError(f"Could not start payload-dumper-go: {exc}") from exc
     assert proc.stdout is not None
     try:
-        for line in proc.stdout:
+        while True:
             if cancel_event is not None and cancel_event.is_set():
                 proc.terminate()
                 try: proc.wait(timeout=5)
                 except subprocess.TimeoutExpired: proc.kill(); proc.wait()
                 raise BackendError("Extraction cancelled by user.")
+            line = proc.stdout.readline()
+            if not line:
+                break
             if progress: progress(line.rstrip())
         code=proc.wait()
     except BaseException:
