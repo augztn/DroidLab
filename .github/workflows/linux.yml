@@ -43,7 +43,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-tk xz-utils wget file libfuse2
+          sudo apt-get install -y python3-tk xz-utils wget file libfuse2 xvfb
           python -m pip install --upgrade pyinstaller
           wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O /tmp/appimagetool
           chmod +x /tmp/appimagetool
@@ -58,6 +58,21 @@ jobs:
             VERSION="0.1.0-ci.${GITHUB_RUN_NUMBER}"
           fi
           VERSION="$VERSION" bash scripts/build-linux.sh
+      - name: Smoke-test AppImage startup
+        run: |
+          appimage="$(find dist -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          test -n "$appimage"
+          chmod +x "$appimage"
+          set +e
+          APPIMAGE_EXTRACT_AND_RUN=1 timeout 8s xvfb-run -a "$appimage" > /tmp/appimage-smoke.log 2>&1
+          status=$?
+          set -e
+          cat /tmp/appimage-smoke.log
+          # 124 means the GUI stayed running until the smoke-test timeout.
+          if [[ "$status" -ne 124 ]]; then
+            echo "AppImage did not stay running (exit code $status)" >&2
+            exit 1
+          fi
       - name: Generate checksum
         run: cd dist && sha256sum *.AppImage > SHA256SUMS
       - name: Upload downloadable AppImage artifact
