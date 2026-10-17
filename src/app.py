@@ -140,10 +140,10 @@ class PayloadDumperApp(TkinterDnD.Tk):
         side=ttk.Frame(lower,style="Panel.TFrame",padding=10); side.grid(row=1,column=0,sticky="ew",pady=(0,10))
         ttk.Label(side,text="ADB SIDELOAD — INSTALL OTA ZIP",background="#1f2937",foreground="#93c5fd",font=("Sans",12,"bold")).pack(anchor="w")
         row=ttk.Frame(side,style="Panel.TFrame"); row.pack(fill="x",pady=(5,0))
-        self.sideload_file=tk.StringVar(); ttk.Entry(row,textvariable=self.sideload_file).pack(side="left",fill="x",expand=True,ipady=4)
+        self.sideload_file=tk.StringVar(); self.sideload_entry=ttk.Entry(row,textvariable=self.sideload_file); self.sideload_entry.pack(side="left",fill="x",expand=True,ipady=4)
         ttk.Button(row,text="Browse ZIP…",command=self._browse_sideload_zip).pack(side="left",padx=(7,0))
         ttk.Button(row,text="Sideload ZIP…",command=self._run_adb_sideload).pack(side="left",padx=(7,0))
-        ttk.Label(side,text="First boot to recovery and choose Apply update from ADB. Select the device marked [sideload]. Only install a ZIP made for your exact device.",background="#1f2937",foreground="#cbd5e1",wraplength=1100).pack(anchor="w",pady=(5,0))
+        drop_hint=ttk.Label(side,text="Drop an OTA .zip file here, or use Browse ZIP…",background="#111827",foreground="#93c5fd",padding=8,wraplength=1100); drop_hint.pack(fill="x",pady=(7,0))\n        for drop_widget in (side, self.sideload_entry, drop_hint): self._enable_sideload_drop(drop_widget)\n        ttk.Label(side,text="First boot to recovery and choose Apply update from ADB. Select the device marked [sideload]. Only install a ZIP made for your exact device.",background="#1f2937",foreground="#cbd5e1",wraplength=1100).pack(anchor="w",pady=(5,0))
         shell=ttk.Frame(lower,style="Panel.TFrame",padding=10); shell.grid(row=2,column=0,sticky="nsew"); shell.columnconfigure(0,weight=1); shell.rowconfigure(2,weight=1)
         ttk.Label(shell,text="ADVANCED DEVICE SHELL",background="#1f2937",foreground="#93c5fd",font=("Sans",12,"bold")).grid(row=0,column=0,sticky="w")
         row=ttk.Frame(shell,style="Panel.TFrame"); row.grid(row=1,column=0,sticky="ew",pady=(5,7))
@@ -188,6 +188,30 @@ class PayloadDumperApp(TkinterDnD.Tk):
             if result.returncode:messagebox.showerror("ADB reboot failed",output or "adb exit status "+str(result.returncode))
             else:self.adb_device_status.set("Reboot command sent. Refresh after the device changes mode.")
         except (OSError,subprocess.TimeoutExpired) as exc:messagebox.showerror("ADB reboot failed",str(exc))
+
+    def _enable_sideload_drop(self, widget):
+        """Register a drop target that routes OTA ZIPs to the sideload field."""
+        try:
+            widget.drop_target_register(DND_FILES)
+            widget.dnd_bind("<<Drop>>", self._drop_sideload)
+        except Exception as exc:
+            self._append("ADB sideload drag-and-drop unavailable on this widget: " + str(exc))
+
+    def _drop_sideload(self, event):
+        try:
+            paths = [Path(p).expanduser() for p in self.tk.splitlist(event.data)]
+        except (tk.TclError, TypeError):
+            self.adb_device_status.set("Could not read dropped path; use Browse ZIP.")
+            return "break"
+        packages = [p for p in paths if p.is_file() and p.suffix.lower() == ".zip"]
+        if not packages:
+            messagebox.showwarning("OTA ZIP required", "Drop an existing .zip update package onto the ADB Sideload area.")
+            return "break"
+        package = packages[0].resolve()
+        self.sideload_file.set(str(package))
+        self.adb_device_status.set("OTA ZIP selected: " + package.name + ". Choose Sideload ZIP when the device is in recovery sideload mode.")
+        self._append("OTA ZIP dropped for ADB sideload: " + str(package))
+        return "break"
 
     def _browse_sideload_zip(self):
         path=filedialog.askopenfilename(title="Choose OTA ZIP to sideload",filetypes=[("OTA ZIP","*.zip"),("All files","*")])
