@@ -1,0 +1,68 @@
+name: Windows build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller "tkinterdnd2>=0.4.3,<1"
+      - name: Compile-check Python
+        run: python -m compileall -q src tests
+      - name: Run tests
+        env:
+          PYTHONPATH: .
+        run: python -m unittest discover -s tests -v
+      - name: Build portable Windows bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = if ($env:GITHUB_REF -like "refs/tags/v*") { $env:GITHUB_REF_NAME.Substring(1) } else { "0.1.0-ci.$env:GITHUB_RUN_NUMBER" }
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name DroidLab --distpath "$PWD\build\pyinstaller-dist" --workpath "$PWD\build\pyinstaller-work" --specpath "$PWD\build" --paths src --hidden-import=payload_dumper --hidden-import=tkinter.ttk --collect-all tkinterdnd2 src/app.py
+          New-Item -ItemType Directory -Force -Path "dist\DroidLab-$version-windows-x64\bin" | Out-Null
+          Copy-Item "build\pyinstaller-dist\DroidLab.exe" "dist\DroidLab-$version-windows-x64\DroidLab.exe"
+          $backendVersion = "2.1.0"
+          $archive = "payload-dumper-go_$($backendVersion)_windows_amd64.tar.gz"
+          $url = "https://github.com/ssut/payload-dumper-go/releases/download/$backendVersion/$archive"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\payload-backend.tar.gz"
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\payload-backend" | Out-Null
+          tar -xzf "$env:RUNNER_TEMP\payload-backend.tar.gz" -C "$env:RUNNER_TEMP\payload-backend"
+          $backend = Get-ChildItem "$env:RUNNER_TEMP\payload-backend" -Recurse -File | Where-Object { $_.Name -eq "payload-dumper-go.exe" -or $_.Name -eq "payload-dumper-go" } | Select-Object -First 1
+          if (-not $backend) { throw "payload-dumper-go executable not found in Windows release archive" }
+          Copy-Item $backend.FullName "dist\DroidLab-$version-windows-x64\bin\payload-dumper-go.exe"
+          @"
+          DroidLab for Windows
+          ====================
+          Run DroidLab.exe to start the application.
+
+          The payload extraction backend is bundled in the bin folder.
+          Fastboot and ADB features require Android SDK Platform-Tools installed separately and available on PATH.
+          "@ | Set-Content "dist\DroidLab-$version-windows-x64\README-Windows.txt"
+          Compress-Archive -Path "dist\DroidLab-$version-windows-x64" -DestinationPath "dist\DroidLab-$version-windows-x64.zip" -Force
+      - name: Upload portable Windows bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: droidlab-windows-x64
+          path: dist/DroidLab-*-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish Windows release asset
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/DroidLab-*-windows-x64.zip
