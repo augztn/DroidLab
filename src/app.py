@@ -252,13 +252,24 @@ class PayloadDumperApp(TkinterDnD.Tk):
         path=filedialog.asksaveasfilename(title="Save Android logcat",defaultextension=".txt",initialfile="logs.txt",filetypes=[("Text files","*.txt"),("All files","*")])
         if not path:return
         binary,serial=selected
+        self._append("Starting logcat capture to " + path)
+        threading.Thread(target=self._capture_logcat_file,args=(binary,serial,path),daemon=True).start()
+
+    def _capture_logcat_file(self,binary,serial,path):
+        process=None
         try:
             with open(path,"w",encoding="utf-8") as output:
-                result=subprocess.run([binary,"-s",serial,"logcat"],stdout=output,stderr=subprocess.PIPE,text=True,timeout=3600,check=False)
-            if result.returncode:messagebox.showerror("Save logcat failed",result.stderr or "adb exit status "+str(result.returncode))
-            else:messagebox.showinfo("Logcat saved","Saved logcat to:\n"+path)
-        except subprocess.TimeoutExpired:messagebox.showinfo("Logcat capture stopped","One-hour capture limit reached; partial output saved to:\n"+path)
-        except OSError as exc:messagebox.showerror("Save logcat failed",str(exc))
+                process=subprocess.Popen([binary,"-s",serial,"logcat"],stdout=output,stderr=subprocess.PIPE,text=True)
+                try:
+                    _stdout,stderr=process.communicate(timeout=3600)
+                    self.events.put(("adb_result",("logcat_file",process.returncode,"Saved logcat to "+path+(("\n"+stderr.strip()) if stderr and stderr.strip() else ""))))
+                except subprocess.TimeoutExpired:
+                    process.terminate()
+                    process.wait(timeout=10)
+                    self.events.put(("adb_result",("logcat_file",0,"One-hour capture limit reached. Partial logcat saved to "+path)))
+        except OSError as exc:
+            if process and process.poll() is None: process.terminate()
+            self.events.put(("adb_result",("logcat_file",-1,str(exc))))
 
     def _create_adb_bugreport(self):
         selected=self._adb_require(("device",))
@@ -535,6 +546,9 @@ class PayloadDumperApp(TkinterDnD.Tk):
                     elif kind_name=="sideload":
                         if code==0:messagebox.showinfo("Sideload complete","ADB reported that the sideload command completed.")
                         else:messagebox.showerror("Sideload failed",output)
+                    elif kind_name=="logcat_file":
+                        if code==0:messagebox.showinfo("Logcat saved",output)
+                        else:messagebox.showerror("Save logcat failed",output)
                 elif kind=="parts":self._load_parts(payload)
                 elif kind=="info_done":self._busy(False);self.status.set(payload)
                 elif kind=="done":self._busy(False);self.status.set(payload);messagebox.showinfo("Extraction finished",payload)
