@@ -22,11 +22,8 @@ jobs:
             runner: windows-2022
             python_arch: x64
             backend_arch: amd64
-          - label: x86
-            arch: x86
-            runner: windows-2022
-            python_arch: x86
-            backend_arch: 386
+          # 32-bit Windows is omitted: upstream payload-dumper-go has no 386 release,
+          # and its dependency tree does not compile for GOARCH=386.
           - label: ARM64
             arch: arm64
             runner: windows-11-arm
@@ -39,11 +36,7 @@ jobs:
         with:
           python-version: "3.12"
           architecture: ${{ matrix.python_arch }}
-      - name: Set up Go for 32-bit backend build
-        if: matrix.arch == 'x86'
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.27.0'
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -64,27 +57,14 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$bundle\bin" | Out-Null
           Copy-Item "build\pyinstaller-dist\DroidLab.exe" "$bundle\DroidLab.exe"
           $backendVersion = "2.1.0"
-          if ("${{ matrix.arch }}" -eq "x86") {
-            # Upstream does not publish a Windows 386 release asset; compile the same tagged source.
-            git clone --depth 1 --branch $backendVersion https://github.com/ssut/payload-dumper-go.git "$env:RUNNER_TEMP\payload-dumper-go-src"
-            Push-Location "$env:RUNNER_TEMP\payload-dumper-go-src"
-            try {
-              $env:GOOS = "windows"
-              $env:GOARCH = "386"
-              $env:CGO_ENABLED = "0"
-              go build -trimpath -ldflags="-s -w" -o "$bundle\bin\payload-dumper-go.exe" .
-              if ($LASTEXITCODE -ne 0) { throw "Building the 32-bit payload-dumper-go backend failed." }
-            } finally { Pop-Location }
-          } else {
-            $archive = "payload-dumper-go_$($backendVersion)_windows_${{ matrix.backend_arch }}.tar.gz"
-            $url = "https://github.com/ssut/payload-dumper-go/releases/download/$backendVersion/$archive"
-            Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\payload-backend.tar.gz"
-            New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\payload-backend" | Out-Null
-            tar -xzf "$env:RUNNER_TEMP\payload-backend.tar.gz" -C "$env:RUNNER_TEMP\payload-backend"
-            $backend = Get-ChildItem "$env:RUNNER_TEMP\payload-backend" -Recurse -File | Where-Object { $_.Name -eq "payload-dumper-go.exe" -or $_.Name -eq "payload-dumper-go" } | Select-Object -First 1
-            if (-not $backend) { throw "payload-dumper-go executable not found in Windows release archive for ${{ matrix.arch }}" }
-            Copy-Item $backend.FullName "$bundle\bin\payload-dumper-go.exe"
-          }
+          $archive = "payload-dumper-go_$($backendVersion)_windows_${{ matrix.backend_arch }}.tar.gz"
+          $url = "https://github.com/ssut/payload-dumper-go/releases/download/$backendVersion/$archive"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\payload-backend.tar.gz"
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\payload-backend" | Out-Null
+          tar -xzf "$env:RUNNER_TEMP\payload-backend.tar.gz" -C "$env:RUNNER_TEMP\payload-backend"
+          $backend = Get-ChildItem "$env:RUNNER_TEMP\payload-backend" -Recurse -File | Where-Object { $_.Name -eq "payload-dumper-go.exe" -or $_.Name -eq "payload-dumper-go" } | Select-Object -First 1
+          if (-not $backend) { throw "payload-dumper-go executable not found in Windows release archive for ${{ matrix.arch }}" }
+          Copy-Item $backend.FullName "$bundle\bin\payload-dumper-go.exe"
           # Bundle Google's Windows platform-tools where the OS architecture supports them.
           # ARM64 Windows can run the official x64 tools under emulation; 32-bit Windows support
           # depends on the architecture of the upstream platform-tools package.
