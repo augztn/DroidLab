@@ -340,17 +340,16 @@ class DebloaterTab:
         self.count_label.pack(side="right", padx=(10, 0))
         self.filter_var.trace_add("write", lambda *_: self.render_packages())
 
-        columns = ("type", "risk", "path")
+        columns = ("package", "type", "risk", "path")
         self.tree = ttk.Treeview(main, columns=columns, show="headings", selectmode="extended")
+        self.tree.heading("package", text="Package name")
         self.tree.heading("type", text="Type")
         self.tree.heading("risk", text="Risk")
         self.tree.heading("path", text="APK path")
-        self.tree.heading("#0", text="Package")
+        self.tree.column("package", width=280, minwidth=200, stretch=True)
         self.tree.column("type", width=90, anchor="center", stretch=False)
         self.tree.column("risk", width=115, anchor="center", stretch=False)
         self.tree.column("path", width=420, minwidth=180, stretch=True)
-        self.tree["displaycolumns"] = ("type", "risk", "path")
-        # Package is stored as the stable tree item id to simplify selection and export.
         self.tree.pack(fill="both", expand=True)
         actions = ttk.Frame(main, style="Panel.TFrame")
         actions.grid(row=2, column=0, sticky="ew", pady=(8, 0))
@@ -431,7 +430,7 @@ class DebloaterTab:
                    or query in p["path"].casefold()]
         for package in visible:
             self.tree.insert("", "end", iid=package["name"],
-                             values=(package["type"], package["risk"], package["path"]))
+                             values=(package["name"], package["type"], package["risk"], package["path"]))
         self.count_label.configure(text=f"{len(visible)} shown / {len(self.packages)} total")
 
     def select_visible(self):
