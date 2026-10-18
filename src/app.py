@@ -30,11 +30,15 @@ def _log_directory():
 
 def _configure_logging():
     directory = _log_directory()
+    logger = logging.getLogger()
+    # __init__ and the module entry point can both call this; avoid duplicate handlers.
+    if any(getattr(handler, "_droidlab_handler", False) for handler in logger.handlers):
+        return directory / "droidlab.log"
     try:
         directory.mkdir(parents=True, exist_ok=True)
         handler = RotatingFileHandler(directory / "droidlab.log", maxBytes=2 * 1024 * 1024, backupCount=4, encoding="utf-8")
+        handler._droidlab_handler = True
         handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(threadName)s | %(name)s | %(message)s"))
-        logger = logging.getLogger()
         logger.setLevel(logging.INFO)
         logger.addHandler(handler)
         logging.info("==== %s starting ====", APP_NAME)
@@ -668,33 +672,59 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.adb_output.configure(state="normal"); self.adb_output.insert("end",text+"\n"); self.adb_output.see("end"); self.adb_output.configure(state="disabled")
 
     def _start_adb_logcat(self):
-        selected=self._adb_require(("device",))
-        if not selected:return
-        if self.adb_log_process and self.adb_log_process.poll() is None:messagebox.showinfo("Logcat running","Stop the current logcat window first.");return
-        binary,serial=selected
-        window=tk.Toplevel(self); window.title("DroidLab Live Logcat - "+serial); window.geometry("1000x650"); window.configure(bg="#111827")
-        toolbar=ttk.Frame(window); toolbar.pack(fill="x",padx=8,pady=(8,0))
-        ttk.Label(toolbar,text="Filter").pack(side="left",padx=(0,6))
-        self.adb_log_filter=tk.StringVar()
-        ttk.Entry(toolbar,textvariable=self.adb_log_filter).pack(side="left",fill="x",expand=True)
-        text=tk.Text(window,bg="#0b1220",fg="#d1d5db",wrap="none",font=("Monospace",10),state="disabled")
-        text.pack(fill="both",expand=True,padx=8,pady=8)
-        self.adb_log_window,self.adb_log_text=window,text
-        self.adb_log_lines=[]; self.adb_log_paused=False
-        self.adb_log_filter.trace_add("write",lambda *_:self._render_adb_logcat())
-        try:self.adb_log_process=subprocess.Popen([binary,"-s",serial,"logcat"],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,encoding="utf-8",errors="replace",bufsize=1,**_windows_process_options())
-        except OSError as exc:window.destroy(); self.adb_log_window=self.adb_log_text=None; messagebox.showerror("Logcat failed",str(exc)); return
-        buttons=ttk.Frame(window); buttons.pack(fill="x",padx=8,pady=(0,8))
-        self.adb_log_pause_button=ttk.Button(buttons,text="Pause display",command=self._toggle_adb_logcat_pause); self.adb_log_pause_button.pack(side="left")
-        ttk.Button(buttons,text="Save visible log…",command=self._save_visible_adb_logcat).pack(side="left",padx=6)
-        ttk.Button(buttons,text="Stop logcat",command=self._stop_adb_logcat).pack(side="right")
-        process=self.adb_log_process
+        selected = self._adb_require(("device",))
+        if not selected:
+            return
+        if self.adb_log_process and self.adb_log_process.poll() is None:
+            messagebox.showinfo("Logcat running", "Stop the current logcat window first.", parent=self)
+            return
+        binary, serial = selected
+        logging.info("Starting live logcat for device %s using %s", serial, binary)
+        window = tk.Toplevel(self)
+        window.title("DroidLab Live Logcat - " + serial)
+        window.geometry("1000x650")
+        window.configure(bg="#111827")
+        toolbar = ttk.Frame(window)
+        toolbar.pack(fill="x", padx=8, pady=(8, 0))
+        ttk.Label(toolbar, text="Filter").pack(side="left", padx=(0, 6))
+        self.adb_log_filter = tk.StringVar()
+        ttk.Entry(toolbar, textvariable=self.adb_log_filter).pack(side="left", fill="x", expand=True)
+        text = tk.Text(window, bg="#0b1220", fg="#d1d5db", wrap="none", font=("Monospace", 10), state="disabled")
+        text.pack(fill="both", expand=True, padx=8, pady=8)
+        self.adb_log_window, self.adb_log_text = window, text
+        self.adb_log_lines = []
+        self.adb_log_paused = False
+        self.adb_log_pause_button = None
+        self.adb_log_filter.trace_add("write", lambda *_: self._render_adb_logcat())
+        try:
+            self.adb_log_process = subprocess.Popen(
+                [binary, "-s", serial, "logcat", "-v", "threadtime"],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                encoding="utf-8", errors="replace", bufsize=1, **_windows_process_options())
+        except OSError as exc:
+            logging.exception("Could not start live logcat for %s", serial)
+            window.destroy()
+            self.adb_log_window = self.adb_log_text = None
+            messagebox.showerror("Logcat failed", str(exc), parent=self)
+            return
+        buttons = ttk.Frame(window)
+        buttons.pack(fill="x", padx=8, pady=(0, 8))
+        self.adb_log_pause_button = ttk.Button(buttons, text="Pause display", command=self._toggle_adb_logcat_pause)
+        self.adb_log_pause_button.pack(side="left")
+        ttk.Button(buttons, text="Save visible log…", command=self._save_visible_adb_logcat).pack(side="left", padx=6)
+        ttk.Button(buttons, text="Stop logcat", command=self._stop_adb_logcat).pack(side="right")
+        process = self.adb_log_process
         def reader():
             try:
                 if process.stdout:
-                    for line in process.stdout:self.events.put(("adb_log_line",line.rstrip("\n")))
-            finally:self.events.put(("adb_log_end",None))
-        threading.Thread(target=reader,daemon=True).start(); window.protocol("WM_DELETE_WINDOW",self._stop_adb_logcat)
+                    for line in process.stdout:
+                        self.events.put(("adb_log_line", line.rstrip("\r\n")))
+            except (OSError, ValueError):
+                logging.exception("Error reading live logcat output")
+            finally:
+                self.events.put(("adb_log_end", process.poll()))
+        threading.Thread(target=reader, name="DroidLab-LogcatReader", daemon=True).start()
+        window.protocol("WM_DELETE_WINDOW", self._stop_adb_logcat)
 
     def _render_adb_logcat(self):
         if not self.adb_log_text or not self.adb_log_window or not self.adb_log_window.winfo_exists(): return
@@ -1093,6 +1123,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         except Exception as e:self.events.put(("error",f"Unexpected error: {e}"))
     def _cancel(self):self.cancel_event.set();self.status.set("Cancelling…");self._append("Cancellation requested.")
     def _poll_events(self):
+        logcat_changed = False
         try:
             while True:
                 kind,payload=self.events.get_nowait()
@@ -1101,7 +1132,12 @@ class PayloadDumperApp(TkinterDnD.Tk):
                     if self.adb_log_text and self.adb_log_window and self.adb_log_window.winfo_exists():
                         self.adb_log_lines.append(payload)
                         if len(self.adb_log_lines)>10000: del self.adb_log_lines[:len(self.adb_log_lines)-10000]
-                        if not self.adb_log_paused: self._render_adb_logcat()
+                        logcat_changed = True
+                elif kind=="adb_log_end":
+                    logging.info("Live logcat reader ended; process return code: %s", payload)
+                    if self.adb_log_window and self.adb_log_window.winfo_exists():
+                        self.adb_log_lines.append("[DroidLab] Logcat stream ended (return code: %s)" % payload)
+                        logcat_changed = True
                 elif kind=="adb_result":
                     kind_name,code,output=payload
                     self._append("ADB "+kind_name+" result:\n"+output)
@@ -1125,6 +1161,8 @@ class PayloadDumperApp(TkinterDnD.Tk):
                     self._busy(False);self.status.set("Extraction failed" if kind=="error" else "Cancelled");self._append(("ERROR: " if kind=="error" else "CANCELLED: ")+payload)
                     if kind=="error":messagebox.showerror("Operation failed",payload)
         except queue.Empty:pass
+        if logcat_changed and not self.adb_log_paused:
+            self._render_adb_logcat()
         self.after(100,self._poll_events)
 if __name__ == "__main__":
     _configure_logging()
