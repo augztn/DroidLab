@@ -416,6 +416,24 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.maintenance_status = tk.StringVar(value="No maintenance command executed.")
         ttk.Label(reference, textvariable=self.maintenance_status, background="#1f2937", foreground="#cbd5e1", wraplength=520, justify="left", font=("Sans", 10)).pack(anchor="w", pady=(10, 0))
 
+        # Advanced manual Fastboot console. Commands execute on the host using the
+        # bundled/PATH fastboot binary, not inside Android's device shell.
+        manual = ttk.Frame(tab, style="Panel.TFrame", padding=12)
+        manual.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        ttk.Label(manual, text="ADVANCED FASTBOOT COMMAND", background="#1f2937",
+                  foreground="#93c5fd", font=("Sans", 11, "bold")).pack(anchor="w")
+        ttk.Label(manual, text="Enter commands such as fastboot getvar all or fastboot reboot. Drag an image/file into the command field to insert its path. Destructive commands require confirmation.",
+                  background="#1f2937", foreground="#cbd5e1", wraplength=1100,
+                  justify="left").pack(anchor="w", pady=(4, 7))
+        self.fastboot_manual_command = tk.StringVar(value="fastboot devices")
+        self.fastboot_manual_entry = ttk.Entry(manual, textvariable=self.fastboot_manual_command)
+        self.fastboot_manual_entry.pack(fill="x", pady=(0, 7), ipady=4)
+        row = ttk.Frame(manual, style="Panel.TFrame")
+        row.pack(fill="x")
+        ttk.Button(row, text="Run Fastboot command", command=self._run_fastboot_manual).pack(side="left")
+        ttk.Button(row, text="Clear", command=lambda: self.fastboot_manual_command.set("")).pack(side="left", padx=(7, 0))
+        self._enable_command_drop(self.fastboot_manual_entry, self.fastboot_manual_command, "fastboot")
+
         self.flash_image.trace_add("write", lambda *_: self._on_flash_image_changed())
         self.flash_partition.trace_add("write", lambda *_: self._update_flash_preview())
         self.fastboot_device.trace_add("write", lambda *_: self._update_flash_preview())
@@ -458,8 +476,14 @@ class PayloadDumperApp(TkinterDnD.Tk):
         shell=ttk.Frame(lower,style="Panel.TFrame",padding=10); shell.grid(row=2,column=0,sticky="nsew"); shell.columnconfigure(0,weight=1); shell.rowconfigure(2,weight=1)
         ttk.Label(shell,text="ADVANCED DEVICE SHELL",background="#1f2937",foreground="#93c5fd",font=("Sans",12,"bold")).grid(row=0,column=0,sticky="w")
         row=ttk.Frame(shell,style="Panel.TFrame"); row.grid(row=1,column=0,sticky="ew",pady=(5,7))
-        self.adb_shell_command=tk.StringVar(value="dumpsys battery"); ttk.Entry(row,textvariable=self.adb_shell_command).pack(side="left",fill="x",expand=True,ipady=4)
-        ttk.Button(row,text="Run shell command",command=self._run_adb_shell).pack(side="left",padx=(7,0))
+        self.adb_shell_command=tk.StringVar(value="dumpsys battery")
+        self.adb_shell_entry=ttk.Entry(row,textvariable=self.adb_shell_command)
+        self.adb_shell_entry.pack(side="left",fill="x",expand=True,ipady=4)
+        self.adb_shell_entry.bind("<Return>",lambda _event:self._run_adb_shell())
+        ttk.Button(row,text="Run command",command=self._run_adb_shell).pack(side="left",padx=(7,0))
+        self._enable_command_drop(self.adb_shell_entry,self.adb_shell_command,"adb")
+        ttk.Label(shell,text="Tip: Enter device-shell commands (dumpsys battery) OR host commands (adb devices, adb reboot recovery). Do not type adb commands into the Android shell itself.",
+                  background="#1f2937",foreground="#cbd5e1",wraplength=1100,justify="left").grid(row=3,column=0,sticky="w",pady=(5,0))
         self.adb_output=tk.Text(shell,height=7,bg="#0b1220",fg="#d1d5db",insertbackground="white",relief="flat",wrap="word",font=("Monospace",10)); self.adb_output.grid(row=2,column=0,sticky="nsew")
         self.adb_output.insert("end","Select a device, then run dumpsys battery or another trusted shell command.\n"); self.adb_output.configure(state="disabled")
         self.adb_log_process = None
@@ -675,15 +699,118 @@ class PayloadDumperApp(TkinterDnD.Tk):
         except (OSError,subprocess.TimeoutExpired) as exc:self.events.put(("adb_result",(kind,-1,str(exc))))
 
     def _run_adb_shell(self):
-        selected=self._adb_require(("device",))
-        if not selected:return
-        text=self.adb_shell_command.get().strip()
-        if not text:messagebox.showwarning("Shell command required","Enter a command such as dumpsys battery.");return
-        risky=re.compile(r"(^|[;&|]\s*)(rm\s+-rf|reboot|poweroff|shutdown|mkfs\b|dd\b|format\b|wipe\b|setprop\b|pm\s+(uninstall|disable-user)|svc\s+.*disable)",re.I)
-        if risky.search(text) and not messagebox.askyesno("Confirm potentially destructive shell command","This command may change device state or delete data:\n\n"+text+"\n\nRun it on "+self.adb_device.get()+"?",icon="warning"):
-            self._append("ADB shell command cancelled by user.");return
-        binary,serial=selected; self._append("Running adb shell command on "+serial+": "+text)
-        threading.Thread(target=self._adb_task,args=([binary,"-s",serial,"shell",text],90,"shell"),daemon=True).start()
+        text = self.adb_shell_command.get().strip()
+        if not text:
+            messagebox.showwarning("Command required", "Enter a device-shell command (dumpsys battery) or host ADB command (adb devices).")
+            return
+        # ADB commands run on the computer. Plain commands run on the selected
+        # Android device. This avoids sending "adb devices" into Android's shell.
+        try:
+            tokens = shlex.split(text, posix=(os.name != "nt"))
+        except ValueError as exc:
+            messagebox.showerror("Invalid command", "Check the command quoting:\n" + str(exc))
+            return
+        if not tokens:
+            return
+        first = Path(tokens[0]).name.lower()
+        if first in ("adb", "adb.exe"):
+            binary = self._tool_path("adb.exe" if os.name == "nt" else "adb") or self._tool_path("adb")
+            if not binary:
+                messagebox.showerror("ADB not found", "Bundle platform-tools or install ADB and add it to PATH.")
+                return
+            args = tokens[1:]
+            if not args:
+                args = ["devices", "-l"]
+            # If a serial is selected and the command doesn't already select a device,
+            # target it automatically for commands other than device discovery.
+            discovery = args[0] in ("devices", "version", "help")
+            selected = self._adb_require(("device",)) if not discovery else None
+            if selected and not any(args[i] == "-s" for i in range(min(len(args), 3))):
+                args = ["-s", selected[1]] + args
+            command = [binary] + args
+            risky = re.compile(r"(^|[;&|]\s*)(reboot|sideload|root|remount|disable-verity)\b|\\b(erase|format|flash|wipe|uninstall)\b", re.I)
+            if risky.search(text) and not messagebox.askyesno("Confirm ADB command", "This command can change device state:\n\n" + text + "\n\nContinue?", icon="warning"):
+                self._append("ADB command cancelled by user.")
+                return
+            self._append("Running host ADB command: " + " ".join(shlex.quote(x) for x in command))
+            threading.Thread(target=self._adb_task, args=(command, 180, "shell"), daemon=True).start()
+            return
+
+        selected = self._adb_require(("device",))
+        if not selected:
+            return
+        binary, serial = selected
+        risky = re.compile(r"(^|[;&|]\s*)(rm\s+-rf|reboot|poweroff|shutdown|mkfs\b|dd\b|format\b|wipe\b|setprop\b|pm\s+(uninstall|disable-user)|svc\s+.*disable)", re.I)
+        if risky.search(text) and not messagebox.askyesno("Confirm potentially destructive shell command", "This command may change device state or delete data:\n\n" + text + "\n\nRun it on " + serial + "?", icon="warning"):
+            self._append("Device-shell command cancelled by user.")
+            return
+        self._append("Running device shell command on " + serial + ": " + text)
+        threading.Thread(target=self._adb_task, args=([binary, "-s", serial, "shell"] + tokens, 90, "shell"), daemon=True).start()
+
+    def _run_fastboot_manual(self):
+        text = self.fastboot_manual_command.get().strip()
+        if not text:
+            messagebox.showwarning("Command required", "Enter a Fastboot command.")
+            return
+        try:
+            tokens = shlex.split(text, posix=(os.name != "nt"))
+        except ValueError as exc:
+            messagebox.showerror("Invalid command", "Check the command quoting:\n" + str(exc))
+            return
+        if not tokens:
+            return
+        first = Path(tokens[0]).name.lower()
+        if first in ("fastboot", "fastboot.exe"):
+            tokens = tokens[1:]
+        binary = self._tool_path("fastboot.exe" if os.name == "nt" else "fastboot") or self._tool_path("fastboot")
+        if not binary:
+            messagebox.showerror("Fastboot not found", "Bundle platform-tools or install Fastboot and add it to PATH.")
+            return
+        if not tokens:
+            tokens = ["devices"]
+        serial = self.fastboot_device.get().strip()
+        discovery = tokens[0] in ("devices", "help", "--help", "--version", "version")
+        if serial and not discovery and not any(tokens[i] == "-s" for i in range(min(len(tokens), 3))):
+            tokens = ["-s", serial] + tokens
+        command = [binary] + tokens
+        rendered = " ".join(shlex.quote(x) for x in command)
+        destructive = re.compile(r"\b(flash|erase|format|delete-logical-partition|wipe|set_active|flashing\s+(unlock|lock)|-w)\b", re.I)
+        if destructive.search(" ".join(tokens)):
+            if not messagebox.askyesno("Confirm potentially destructive Fastboot command", "Verify the connected device, image, and partition before continuing.\n\n" + rendered + "\n\nThis operation may erase data or make the device unbootable. Continue?", icon="warning"):
+                self._append("Manual Fastboot command cancelled: " + rendered)
+                return
+        self._append("Executing manual Fastboot command: " + rendered)
+        self.status.set("Running Fastboot command…")
+        threading.Thread(target=self._adb_task, args=(command, 900, "fastboot_manual"), daemon=True).start()
+
+    def _enable_command_drop(self, widget, variable, tool):
+        """Allow a file path to be dropped into a manual command field."""
+        try:
+            widget.drop_target_register(DND_FILES)
+            widget.dnd_bind("<<Drop>>", lambda event: self._drop_command_path(event, variable, tool))
+        except Exception as exc:
+            logging.info("Command-field drag-and-drop unavailable (%s): %s", tool, exc)
+
+    def _drop_command_path(self, event, variable, tool):
+        try:
+            paths = [Path(path) for path in self.tk.splitlist(event.data)]
+        except (tk.TclError, TypeError):
+            self._append("Could not read dropped path; paste it into the command field instead.")
+            return "break"
+        if not paths:
+            return "break"
+        path = paths[0].expanduser()
+        # Quote paths containing spaces so they remain one argument on both platforms.
+        quoted = subprocess.list2cmdline([str(path)]) if os.name == "nt" else shlex.quote(str(path))
+        current = variable.get().strip()
+        if current in ("adb", "fastboot", "adb.exe", "fastboot.exe"):
+            variable.set(current + " " + quoted)
+        elif current:
+            variable.set(current + " " + quoted)
+        else:
+            variable.set(quoted)
+        self._append(f"Inserted dropped file path into {tool} command: {path}")
+        return "break"
 
     def _append_adb_output(self, text):
         self.adb_output.configure(state="normal"); self.adb_output.insert("end",text+"\n"); self.adb_output.see("end"); self.adb_output.configure(state="disabled")
@@ -1157,8 +1284,11 @@ class PayloadDumperApp(TkinterDnD.Tk):
                         logcat_changed = True
                 elif kind=="adb_result":
                     kind_name,code,output=payload
-                    self._append("ADB "+kind_name+" result:\n"+output)
-                    if kind_name=="shell":self._append_adb_output(output)
+                    self._append(("Fastboot " if kind_name=="fastboot_manual" else "ADB ")+kind_name+" result:\n"+output)
+                    if kind_name in ("shell","fastboot_manual"):
+                        self._append_adb_output(output)
+                        if kind_name=="fastboot_manual":
+                            self.status.set("Fastboot command finished (exit code %s)" % code)
                     elif kind_name=="bugreport":
                         report_path=getattr(self,"_bugreport_target_path","")
                         if code==0 and report_path and Path(report_path).is_file():
