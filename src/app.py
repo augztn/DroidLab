@@ -24,7 +24,15 @@ def _windows_process_options():
 APP_NAME = "DroidLab"  # Canonical product name.
 class PayloadDumperApp(TkinterDnD.Tk):
     def __init__(self):
-        super().__init__(); self.title(APP_NAME); self.geometry("1440x900"); self.minsize(1024,700); self.configure(bg="#111827")
+        super().__init__()
+        self.title(APP_NAME)
+        # Use a practical Windows-first size; ttk layouts and system fonts scale
+        # more predictably than the oversized Linux-oriented defaults.
+        self.geometry("1240x820")
+        self.minsize(900, 640)
+        self.configure(bg="#111827")
+        self._ui_font = "Segoe UI" if os.name == "nt" else "Sans"
+        self._mono_font = "Consolas" if os.name == "nt" else "Monospace"
         self.events=queue.Queue(); self.worker=None; self.cancel_event=threading.Event()
         menu=tk.Menu(self)
         help_menu=tk.Menu(menu, tearoff=False)
@@ -209,7 +217,21 @@ class PayloadDumperApp(TkinterDnD.Tk):
         s=ttk.Style(self)
         try:s.theme_use("clam")
         except tk.TclError:pass
-        s.configure("TFrame",background="#111827"); s.configure("Panel.TFrame",background="#1f2937"); s.configure("TLabel",background="#111827",foreground="#e5e7eb",font=("Sans",13)); s.configure("Title.TLabel",font=("Sans",23,"bold"),foreground="#f9fafb"); s.configure("Muted.TLabel",foreground="#cbd5e1"); s.configure("TButton",padding=(14,10),font=("Sans",12)); s.configure("TCheckbutton",background="#1f2937",foreground="#f9fafb",font=("Sans",13)); s.configure("Large.TCheckbutton",background="#1f2937",foreground="#f9fafb",font=("Sans",15),padding=(2,5)); s.configure("Large.TButton",padding=(16,13),font=("Sans",14,"bold")); s.configure("TEntry",padding=7,font=("Sans",12)); s.configure("TCombobox",padding=7,font=("Sans",12)); s.configure("Treeview",background="#0b1220",fieldbackground="#0b1220",foreground="#f1f5f9",rowheight=38,font=("Sans",12)); s.configure("Treeview.Heading",background="#374151",foreground="#ffffff",font=("Sans",12,"bold"),padding=(9,9)); s.map("Treeview",background=[("selected","#1d4ed8")],foreground=[("selected","#ffffff")])
+        font = self._ui_font
+        s.configure("TFrame", background="#111827")
+        s.configure("Panel.TFrame", background="#1f2937")
+        s.configure("TLabel", background="#111827", foreground="#e5e7eb", font=(font, 10 if os.name == "nt" else 13))
+        s.configure("Title.TLabel", font=(font, 20, "bold"), foreground="#f9fafb")
+        s.configure("Muted.TLabel", foreground="#cbd5e1")
+        s.configure("TButton", padding=(9, 6), font=(font, 10 if os.name == "nt" else 12))
+        s.configure("TCheckbutton", background="#1f2937", foreground="#f9fafb", font=(font, 11 if os.name == "nt" else 13))
+        s.configure("Large.TCheckbutton", background="#1f2937", foreground="#f9fafb", font=(font, 12 if os.name == "nt" else 15), padding=(2, 4))
+        s.configure("Large.TButton", padding=(10, 9), font=(font, 11 if os.name == "nt" else 14, "bold"))
+        s.configure("TEntry", padding=5, font=(font, 10 if os.name == "nt" else 12))
+        s.configure("TCombobox", padding=5, font=(font, 10 if os.name == "nt" else 12))
+        s.configure("Treeview", background="#0b1220", fieldbackground="#0b1220", foreground="#f1f5f9", rowheight=30 if os.name == "nt" else 38, font=(font, 10 if os.name == "nt" else 12))
+        s.configure("Treeview.Heading", background="#374151", foreground="#ffffff", font=(font, 10 if os.name == "nt" else 12, "bold"), padding=(7, 6))
+        s.map("Treeview", background=[("selected", "#1d4ed8")], foreground=[("selected", "#ffffff")])
         notebook=ttk.Notebook(self); notebook.pack(fill="both",expand=True,padx=8,pady=8); root=ttk.Frame(notebook,padding=16); notebook.add(root,text="Payload Extractor"); flash_tab=ttk.Frame(notebook,padding=16); notebook.add(flash_tab,text="Fastboot & Flashing"); self._build_flash_tab(flash_tab); adb_tab=ttk.Frame(notebook,padding=16); notebook.add(adb_tab,text="ADB & Sideload"); self._build_adb_tab(adb_tab); h=ttk.Frame(root); h.pack(fill="x",pady=(0,10))
         ttk.Label(h,text=APP_NAME,style="Title.TLabel").pack(anchor="w"); ttk.Label(h,text="Android firmware toolkit · " + ("Windows desktop" if os.name == "nt" else "Linux desktop"),style="Muted.TLabel").pack(anchor="w",pady=(3,0))
         src=ttk.Frame(root,style="Panel.TFrame",padding=10); src.pack(fill="x",pady=(0,7)); ttk.Label(src,text="INPUT FILE PATH — TYPE OR PASTE THE FULL PATH",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(src,style="Panel.TFrame"); row.pack(fill="x",pady=(6,0)); self.source_entry=ttk.Entry(row,textvariable=self.source); self.source_entry.pack(side="left",fill="x",expand=True,ipady=4); self.source_entry.bind("<Return>",lambda _event:self._apply_manual_source_path()); ttk.Button(row,text="Browse…",command=self._browse_source).pack(side="left",padx=(7,0)); actions=ttk.Frame(src,style="Panel.TFrame"); actions.pack(fill="x",pady=(7,0)); ttk.Button(actions,text="Use typed path",command=self._apply_manual_source_path).pack(side="left"); ttk.Button(actions,text="Inspect partitions",command=self._inspect).pack(side="left",padx=(7,0))
@@ -218,8 +240,8 @@ class PayloadDumperApp(TkinterDnD.Tk):
         drive_row=ttk.Frame(out,style="Panel.TFrame"); drive_row.pack(fill="x",pady=(5,0)); ttk.Label(drive_row,text="Mounted drive",background="#1f2937",foreground="#cbd5e1").pack(side="left",padx=(0,8)); self.storage_var=tk.StringVar(); self.storage_combo=ttk.Combobox(drive_row,textvariable=self.storage_var,state="readonly"); self.storage_combo.pack(side="left",fill="x",expand=True); ttk.Button(drive_row,text="Refresh",command=self._refresh_storage_locations).pack(side="left",padx=(7,0)); ttk.Button(drive_row,text="Browse drive",command=self._browse_selected_storage).pack(side="left",padx=(7,0)); ttk.Button(drive_row,text="Use for output",command=self._use_selected_storage).pack(side="left",padx=(7,0));
         middle=ttk.Frame(root); middle.pack(fill="both",expand=True,pady=(0,10)); panel=ttk.Frame(middle,style="Panel.TFrame",padding=10); panel.pack(side="left",fill="both",expand=True,padx=(0,10)); ttk.Label(panel,text="PARTITIONS (no selection = all)",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); actions=ttk.Frame(panel,style="Panel.TFrame"); actions.pack(fill="x",pady=5); ttk.Button(actions,text="Select all",command=lambda:self._select_all(True)).pack(side="left"); ttk.Button(actions,text="Select none",command=lambda:self._select_all(False)).pack(side="left",padx=5)
         self.tree=ttk.Treeview(panel,columns=("size",),show="tree headings",selectmode="none"); self.tree.heading("#0",text="Partition"); self.tree.heading("size",text="Size"); self.tree.column("#0",width=420,minwidth=260,stretch=True); self.tree.column("size",width=150,minwidth=130,anchor="e",stretch=False); self.tree.pack(fill="both",expand=True); self.tree.bind("<Button-1>",self._toggle)
-        side=ttk.Frame(middle,style="Panel.TFrame",padding=22,width=420); side.pack(side="right",fill="y"); side.pack_propagate(False); ttk.Label(side,text="OPTIONS",background="#1f2937",foreground="#93c5fd",font=("Sans",16,"bold")).pack(anchor="w",pady=(0,8)); ttk.Separator(side).pack(fill="x",pady=(0,10)); ttk.Checkbutton(side,text="Generate SHA-256 fingerprints",variable=self.fingerprint,style="Large.TCheckbutton").pack(anchor="w",pady=(10,8)); ttk.Label(side,text="Creates a SHA-256 checksum for each extracted partition. This is separate from the backend’s OTA verification.",background="#1f2937",foreground="#cbd5e1",justify="left",wraplength=360,font=("Sans",12)).pack(anchor="w",pady=(4,16)); self.start_button=ttk.Button(side,text="Extract payload",command=self._start,style="Large.TButton"); self.start_button.pack(fill="x",pady=(8,8),ipady=5); self.cancel_button=ttk.Button(side,text="Cancel",command=self._cancel,state="disabled",style="Large.TButton"); self.cancel_button.pack(fill="x",ipady=5)
-        logbox=ttk.Frame(root,style="Panel.TFrame",padding=10); logbox.pack(fill="x",expand=False); ttk.Label(logbox,text="ACTIVITY LOG",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); self.log=tk.Text(logbox,bg="#0b1220",fg="#d1d5db",insertbackground="white",relief="flat",wrap="word",font=("Monospace",11),height=4); self.log.pack(fill="x",expand=False,pady=6); self.log.configure(state="disabled"); self.progress=ttk.Progressbar(logbox,mode="indeterminate"); self.progress.pack(fill="x",pady=(2,0)); ttk.Label(root,textvariable=self.status,style="Muted.TLabel").pack(anchor="w",pady=(7,0))
+        side=ttk.Frame(middle,style="Panel.TFrame",padding=14,width=300); side.pack(side="right",fill="y"); side.pack_propagate(False); ttk.Label(side,text="OPTIONS",background="#1f2937",foreground="#93c5fd",font=("Sans",16,"bold")).pack(anchor="w",pady=(0,8)); ttk.Separator(side).pack(fill="x",pady=(0,10)); ttk.Checkbutton(side,text="Generate SHA-256 fingerprints",variable=self.fingerprint,style="Large.TCheckbutton").pack(anchor="w",pady=(10,8)); ttk.Label(side,text="Creates a SHA-256 checksum for each extracted partition. This is separate from the backend’s OTA verification.",background="#1f2937",foreground="#cbd5e1",justify="left",wraplength=260,font=(self._ui_font,10 if os.name == "nt" else 12)).pack(anchor="w",pady=(4,16)); self.start_button=ttk.Button(side,text="Extract payload",command=self._start,style="Large.TButton"); self.start_button.pack(fill="x",pady=(8,8),ipady=5); self.cancel_button=ttk.Button(side,text="Cancel",command=self._cancel,state="disabled",style="Large.TButton"); self.cancel_button.pack(fill="x",ipady=5)
+        logbox=ttk.Frame(root,style="Panel.TFrame",padding=10); logbox.pack(fill="x",expand=False); ttk.Label(logbox,text="ACTIVITY LOG",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); self.log=tk.Text(logbox,bg="#0b1220",fg="#d1d5db",insertbackground="white",relief="flat",wrap="word",font=(self._mono_font,10),height=4); self.log.pack(fill="x",expand=False,pady=6); self.log.configure(state="disabled"); self.progress=ttk.Progressbar(logbox,mode="indeterminate"); self.progress.pack(fill="x",pady=(2,0)); ttk.Label(root,textvariable=self.status,style="Muted.TLabel").pack(anchor="w",pady=(7,0))
         self._refresh_storage_locations(); self._enable_drop(self); self._enable_drop(src); self._enable_drop(self.source_entry); self._enable_drop(root); self._append("Drag payload.bin or an OTA .zip onto the window, or type/paste its full path and choose Use typed path. Inspect to select individual partitions."); self._append("Backend: payload-dumper-go (Apache-2.0). Some delta OTA operations are unsupported.")
     def _build_flash_tab(self, tab):
         tab.columnconfigure(0, weight=7, uniform="flash_columns")
@@ -778,10 +800,30 @@ class PayloadDumperApp(TkinterDnD.Tk):
     def _append(self,msg):self.log.configure(state="normal"); self.log.insert("end",str(msg)+"\n"); self.log.see("end"); self.log.configure(state="disabled")
     def _busy(self,value):self.start_button.configure(state="disabled" if value else "normal"); self.cancel_button.configure(state="normal" if value else "disabled"); self.progress.start(12) if value else self.progress.stop()
     def _browse_source(self):
-        p=filedialog.askopenfilename(title="Choose Android OTA package",filetypes=[("Android OTA","*.bin *.zip"),("All files","*")])
-        if p:
-            self.source.set(p); self.parts.clear(); self.part_vars.clear()
-            for i in self.tree.get_children():self.tree.delete(i)
+        """Open the native file picker with a valid starting folder and owner."""
+        current = Path(self.source.get().strip().strip('"').strip("'")).expanduser() if self.source.get().strip() else None
+        initialdir = current.parent if current and current.is_file() else Path.home()
+        if not initialdir.is_dir():
+            initialdir = Path.home()
+        try:
+            path = filedialog.askopenfilename(
+                parent=self,
+                title="Choose Android OTA package",
+                initialdir=str(initialdir),
+                filetypes=[("Android OTA packages", "*.bin *.zip"), ("All files", "*.*")],
+            )
+        except tk.TclError as exc:
+            self._append(f"File picker failed: {exc}")
+            messagebox.showerror("File picker error", f"Windows could not open the file picker. You can paste the full path into the input field instead.\n\n{exc}", parent=self)
+            return
+        if path:
+            self.source.set(str(Path(path).resolve()))
+            self.parts.clear()
+            self.part_vars.clear()
+            for item in self.tree.get_children():
+                self.tree.delete(item)
+            self.status.set(f"Selected: {Path(path).name}")
+            self._append(f"Selected input file: {path}")
     def _apply_manual_source_path(self):
         """Validate a path typed or pasted into the input field."""
         raw = self.source.get().strip().strip('"').strip("'")
@@ -905,8 +947,24 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self._append(f"Output directory set to: {directory}")
 
     def _browse_output(self):
-        p=filedialog.askdirectory(title="Choose output directory",initialdir=self.output.get() or str(Path.home()))
-        if p:self.output.set(p)
+        """Choose an output directory without passing an invalid Windows path."""
+        raw = self.output.get().strip().strip('"').strip("'")
+        initial = Path(raw).expanduser() if raw else Path.home()
+        if not initial.is_dir():
+            initial = initial.parent if initial.parent.is_dir() else Path.home()
+        try:
+            path = filedialog.askdirectory(
+                parent=self, title="Choose output directory",
+                initialdir=str(initial), mustexist=True,
+            )
+        except tk.TclError as exc:
+            self._append(f"Output folder picker failed: {exc}")
+            messagebox.showerror("Folder picker error", f"Could not open the folder picker. Enter the output path manually instead.\n\n{exc}", parent=self)
+            return
+        if path:
+            self.output.set(str(Path(path).resolve()))
+            self.status.set(f"Output directory: {path}")
+            self._append(f"Output directory selected: {path}")
     def _inspect(self):
         if self.worker and self.worker.is_alive():return
         src=self.source.get().strip()
