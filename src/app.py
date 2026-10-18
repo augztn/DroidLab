@@ -686,39 +686,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         threading.Thread(target=self._adb_task,args=([binary,"-s",serial,"shell",text],90,"shell"),daemon=True).start()
 
     def _append_adb_output(self, text):
-        """Show a plain-language battery summary before retaining raw command output."""
-        display = text
-        if "Current Battery Service state:" in text and re.search(r"(?m)^\s*level:\s*\d+", text):
-            values = {}
-            for line in text.splitlines():
-                match = re.match(r"\s*([A-Za-z][A-Za-z ]*):\s*(.*?)\s*$", line)
-                if match:
-                    values[match.group(1).strip().lower()] = match.group(2).strip()
-
-            def number(key):
-                try:
-                    return int(values[key])
-                except (KeyError, ValueError):
-                    return None
-
-            level, voltage, temp = number("level"), number("voltage"), number("temperature")
-            status_map = {"1": "Unknown", "2": "Charging", "3": "Discharging", "4": "Not charging", "5": "Full"}
-            health_map = {"1": "Unknown", "2": "Good", "3": "Overheat", "4": "Dead", "5": "Over voltage", "6": "Unspecified failure", "7": "Cold"}
-            summary = ["BATTERY SUMMARY"]
-            if level is not None:
-                summary.append(f"Battery level: {level}%")
-            if temp is not None:
-                summary.append(f"Temperature: {temp / 10:.1f} °C")
-            if voltage is not None:
-                summary.append(f"Voltage: {voltage} mV")
-            summary.append("Status: " + status_map.get(values.get("status", ""), "Not reported"))
-            summary.append("Android battery health flag: " + health_map.get(values.get("health", ""), "Not reported") + " (not a capacity-health percentage)")
-            summary.append("Capacity fields below are device-reported; their units and accuracy are not verified.")
-            display = "\n".join(summary) + "\n\nADVANCED RAW OUTPUT\n" + text
-        self.adb_output.configure(state="normal")
-        self.adb_output.insert("end", display + "\n")
-        self.adb_output.see("end")
-        self.adb_output.configure(state="disabled")
+        self.adb_output.configure(state="normal"); self.adb_output.insert("end",text+"\n"); self.adb_output.see("end"); self.adb_output.configure(state="disabled")
 
     def _start_adb_logcat(self):
         selected = self._adb_require(("device",))
