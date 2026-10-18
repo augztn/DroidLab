@@ -597,6 +597,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
                 return
             command = [binary, "-s", serial, "reboot"] + (["recovery"] if mode == "recovery" else [])
             label = "recovery" if mode == "recovery" else "normal"
+            kind = "fastboot_reboot"
             title = "Fastboot reboot"
         else:
             selected = self._adb_require(("device", "recovery"))
@@ -605,20 +606,16 @@ class PayloadDumperApp(TkinterDnD.Tk):
             binary, serial = selected
             command = [binary, "-s", serial, "reboot"] + ([mode] if mode else [])
             label = mode or "normal"
+            kind = "adb_reboot"
             title = "ADB reboot"
         if not messagebox.askyesno("Confirm reboot", "Reboot " + serial + " into " + label + " mode?"):
+            self._console_write(self.fastboot_console if is_fastboot else self.adb_console,
+                                "[DroidLab] Reboot cancelled by user.\\n")
             return
-        try:
-            result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                timeout=25, check=False, **_windows_process_options())
-            output = (result.stdout + "\n" + result.stderr).strip()
-            self._append(title + " " + label + ": " + (output or "exit status " + str(result.returncode)))
-            if result.returncode:
-                messagebox.showerror(title + " failed", output or title + " exit status " + str(result.returncode))
-            else:
-                self.adb_device_status.set("Reboot command sent. Refresh devices after the device changes mode.")
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            messagebox.showerror(title + " failed", str(exc))
+        # Use the same asynchronous streaming runner as manual commands so the
+        # command, stdout/stderr, errors, and exit status appear in the live console.
+        self.adb_device_status.set(title + " in progress…")
+        threading.Thread(target=self._adb_task, args=(command, 35, kind), daemon=True).start()
 
     def _enable_sideload_drop(self, widget):
         """Register a drop target that routes OTA ZIPs to the sideload field."""
