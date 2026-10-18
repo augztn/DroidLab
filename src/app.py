@@ -330,7 +330,20 @@ class PayloadDumperApp(TkinterDnD.Tk):
         s.configure("Treeview", background="#0b1220", fieldbackground="#0b1220", foreground="#f1f5f9", rowheight=30 if os.name == "nt" else 38, font=(font, 10 if os.name == "nt" else 12))
         s.configure("Treeview.Heading", background="#374151", foreground="#ffffff", font=(font, 10 if os.name == "nt" else 12, "bold"), padding=(7, 6))
         s.map("Treeview", background=[("selected", "#1d4ed8")], foreground=[("selected", "#ffffff")])
-        notebook=ttk.Notebook(self); notebook.pack(fill="both",expand=True,padx=8,pady=8); root=ttk.Frame(notebook,padding=16); notebook.add(root,text="Payload Extractor"); flash_tab=ttk.Frame(notebook,padding=16); notebook.add(flash_tab,text="Fastboot & Flashing"); self._build_flash_tab(flash_tab); adb_tab=ttk.Frame(notebook,padding=16); notebook.add(adb_tab,text="ADB & Sideload"); self._build_adb_tab(adb_tab); h=ttk.Frame(root); h.pack(fill="x",pady=(0,10))
+        notebook=ttk.Notebook(self); notebook.pack(fill="both",expand=True,padx=8,pady=8)
+        root=ttk.Frame(notebook,padding=16); notebook.add(root,text="Payload Extractor")
+        device_tab=ttk.Frame(notebook,padding=0); notebook.add(device_tab,text="Device Control & Flashing")
+        self.device_mode=tk.StringVar(value="adb")
+        self.device_workspace=ttk.Frame(device_tab)
+        self.device_workspace.pack(fill="both",expand=True)
+        self.flash_workspace=ttk.Frame(self.device_workspace,padding=16)
+        self.adb_workspace=ttk.Frame(self.device_workspace,padding=16)
+        self.flash_workspace.grid(row=0,column=0,sticky="nsew")
+        self.adb_workspace.grid(row=0,column=0,sticky="nsew")
+        self.device_workspace.columnconfigure(0,weight=1); self.device_workspace.rowconfigure(0,weight=1)
+        self._build_flash_tab(self.flash_workspace); self._build_adb_tab(self.adb_workspace)
+        self._show_device_workspace("adb")
+        h=ttk.Frame(root); h.pack(fill="x",pady=(0,10))
         ttk.Label(h,text=APP_NAME,style="Title.TLabel").pack(anchor="w"); ttk.Label(h,text="Android firmware toolkit · " + ("Windows desktop" if os.name == "nt" else "Linux desktop"),style="Muted.TLabel").pack(anchor="w",pady=(3,0))
         src=ttk.Frame(root,style="Panel.TFrame",padding=10); src.pack(fill="x",pady=(0,7)); ttk.Label(src,text="INPUT FILE PATH — TYPE OR PASTE THE FULL PATH",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(src,style="Panel.TFrame"); row.pack(fill="x",pady=(6,0)); self.source_entry=ttk.Entry(row,textvariable=self.source); self.source_entry.pack(side="left",fill="x",expand=True,ipady=4); self.source_entry.bind("<Return>",lambda _event:self._apply_manual_source_path()); ttk.Button(row,text="Browse…",command=self._browse_source).pack(side="left",padx=(7,0)); actions=ttk.Frame(src,style="Panel.TFrame"); actions.pack(fill="x",pady=(7,0)); ttk.Button(actions,text="Use typed path",command=self._apply_manual_source_path).pack(side="left"); ttk.Button(actions,text="Inspect partitions",command=self._inspect).pack(side="left",padx=(7,0))
         out=ttk.Frame(root,style="Panel.TFrame",padding=10); out.pack(fill="x",pady=(0,7)); ttk.Label(out,text="OUTPUT DIRECTORY",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(out,style="Panel.TFrame"); row.pack(fill="x",pady=(5,0)); ttk.Entry(row,textvariable=self.output).pack(side="left",fill="x",expand=True,ipady=4); ttk.Button(row,text="Choose…",command=self._browse_output).pack(side="left",padx=(7,0))
@@ -341,6 +354,28 @@ class PayloadDumperApp(TkinterDnD.Tk):
         side=ttk.Frame(middle,style="Panel.TFrame",padding=14,width=300); side.pack(side="right",fill="y"); side.pack_propagate(False); ttk.Label(side,text="OPTIONS",background="#1f2937",foreground="#93c5fd",font=("Sans",16,"bold")).pack(anchor="w",pady=(0,8)); ttk.Separator(side).pack(fill="x",pady=(0,10)); ttk.Checkbutton(side,text="Generate SHA-256 fingerprints",variable=self.fingerprint,style="Large.TCheckbutton").pack(anchor="w",pady=(10,8)); ttk.Label(side,text="Creates a SHA-256 checksum for each extracted partition. This is separate from the backend’s OTA verification.",background="#1f2937",foreground="#cbd5e1",justify="left",wraplength=260,font=(self._ui_font,10 if os.name == "nt" else 12)).pack(anchor="w",pady=(4,16)); self.start_button=ttk.Button(side,text="Extract payload",command=self._start,style="Large.TButton"); self.start_button.pack(fill="x",pady=(8,8),ipady=5); self.cancel_button=ttk.Button(side,text="Cancel",command=self._cancel,state="disabled",style="Large.TButton"); self.cancel_button.pack(fill="x",ipady=5)
         logbox=ttk.Frame(root,style="Panel.TFrame",padding=10); logbox.pack(fill="x",expand=False); ttk.Label(logbox,text="ACTIVITY LOG",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); self.log=tk.Text(logbox,bg="#0b1220",fg="#d1d5db",insertbackground="white",relief="flat",wrap="word",font=(self._mono_font,10),height=4); self.log.pack(fill="x",expand=False,pady=6); self.log.configure(state="disabled"); self.progress=ttk.Progressbar(logbox,mode="indeterminate"); self.progress.pack(fill="x",pady=(2,0)); ttk.Label(root,textvariable=self.status,style="Muted.TLabel").pack(anchor="w",pady=(7,0))
         self._refresh_storage_locations(); self._enable_drop(self); self._enable_drop(src); self._enable_drop(self.source_entry); self._enable_drop(root); self._append("Drag payload.bin or an OTA .zip onto the window, or type/paste its full path and choose Use typed path. Inspect to select individual partitions."); self._append("Backend: payload-dumper-go (Apache-2.0). Some delta OTA operations are unsupported.")
+    def _show_device_workspace(self, mode):
+        """Show only the controls appropriate for the selected device mode."""
+        mode = "fastboot" if mode == "fastboot" else "adb"
+        self.device_mode.set(mode)
+        if mode == "fastboot":
+            self.flash_workspace.tkraise()
+        else:
+            self.adb_workspace.tkraise()
+
+    def _on_shared_device_selected(self):
+        target = getattr(self, "_adb_targets", {}).get(self.adb_device.get())
+        if not target:
+            self._update_reboot_actions()
+            return
+        serial, state = target
+        if state == "fastboot":
+            self.fastboot_device.set(serial)
+            self._show_device_workspace("fastboot")
+        else:
+            self._show_device_workspace("adb")
+        self._update_reboot_actions()
+
     def _build_flash_tab(self, tab):
         tab.columnconfigure(0, weight=7, uniform="flash_columns")
         tab.columnconfigure(1, weight=4, uniform="flash_columns")
@@ -553,7 +588,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         labels = list(targets)
         self.adb_device_combo["values"] = labels
         self.adb_device.set(previous if previous in targets else (labels[0] if len(labels) == 1 else ""))
-        self._update_reboot_actions()
+        self._on_shared_device_selected()
         self.adb_device_status.set(" | ".join(status_lines))
         self._append("Combined device scan: " + (", ".join(labels) if labels else "no ADB or Fastboot devices found"))
 
@@ -1055,8 +1090,14 @@ class PayloadDumperApp(TkinterDnD.Tk):
         try: result = subprocess.run([binary, "devices", "-l"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=8, check=False, **_windows_process_options())
         except (OSError, subprocess.TimeoutExpired) as exc: messagebox.showerror("Device detection failed", str(exc)); return
         devices = [line.split()[0] for line in result.stdout.splitlines() if len(line.split()) >= 2 and line.split()[1] == "fastboot"]
-        self.device_combo["values"] = devices; self.fastboot_device.set(devices[0] if len(devices) == 1 else "")
+        self.device_combo["values"] = devices
+        shared = getattr(self, "_adb_targets", {})
+        shared_fastboot = next((label for label, target in shared.items() if target[1] == "fastboot" and target[0] in devices), "")
+        chosen = shared_fastboot or (devices[0] if len(devices) == 1 else "")
+        self.fastboot_device.set(chosen.split(" [Fastboot]")[0] if chosen.endswith(" [Fastboot]") else chosen)
         self._append("Fastboot scan: " + (", ".join(devices) if devices else "no devices found"))
+        if devices:
+            self._show_device_workspace("fastboot")
 
     def _update_flash_preview(self):
         image = self.flash_image.get().strip().strip(chr(34)).strip(chr(39)); part = self.flash_partition.get().strip(); serial = self.fastboot_device.get().strip()
