@@ -135,17 +135,44 @@ class PayloadDumperApp(TkinterDnD.Tk):
                   style="Muted.TLabel", font=("Sans", 10)).pack(
                       anchor="center", pady=(14, 4))
 
-        # Scroll with the mouse wheel while the pointer is over the dialog.
+        # Trackpad and mouse-wheel scrolling: support Linux/X11 wheel events,
+        # Windows/macOS delta events, and smooth touchpad deltas.
         def on_mousewheel(event):
-            if getattr(event, "delta", 0):
-                canvas.yview_scroll(int(-event.delta / 120), "units")
+            delta = getattr(event, "delta", 0) or 0
+            if delta:
+                if abs(delta) >= 120:
+                    units = int(-delta / 120)
+                else:
+                    # Linux touchpads often send small deltas instead of 120-step wheel events.
+                    units = -1 if delta > 0 else 1
+                canvas.yview_scroll(units, "units")
             elif getattr(event, "num", None) == 4:
                 canvas.yview_scroll(-1, "units")
             elif getattr(event, "num", None) == 5:
                 canvas.yview_scroll(1, "units")
-        canvas.bind("<MouseWheel>", on_mousewheel)
-        canvas.bind("<Button-4>", on_mousewheel)
-        canvas.bind("<Button-5>", on_mousewheel)
+            return "break"
+
+        # Bind wheel events to the canvas and every child in the scrollable area,
+        # since Tk widgets under the pointer otherwise consume the event.
+        def bind_scroll_events(widget):
+            for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>",
+                             "<Shift-MouseWheel>"):
+                widget.bind(sequence, on_mousewheel, add="+")
+            for child in widget.winfo_children():
+                bind_scroll_events(child)
+
+        bind_scroll_events(content_frame)
+        bind_scroll_events(hero)
+        canvas.bind("<MouseWheel>", on_mousewheel, add="+")
+        canvas.bind("<Button-4>", on_mousewheel, add="+")
+        canvas.bind("<Button-5>", on_mousewheel, add="+")
+        # Some desktop environments report touchpad gestures as XInput/Touchpad
+        # events; keeping focus on the scrollable surface helps keyboard navigation.
+        canvas.configure(takefocus=True)
+        canvas.bind("<Up>", lambda _e: canvas.yview_scroll(-1, "units"))
+        canvas.bind("<Down>", lambda _e: canvas.yview_scroll(1, "units"))
+        canvas.bind("<Prior>", lambda _e: canvas.yview_scroll(-1, "pages"))
+        canvas.bind("<Next>", lambda _e: canvas.yview_scroll(1, "pages"))
         dialog.grab_set()
 
     def _build(self):
