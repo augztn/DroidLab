@@ -329,7 +329,12 @@ class PayloadDumperApp(TkinterDnD.Tk):
         ttk.Button(row,text="Run shell command",command=self._run_adb_shell).pack(side="left",padx=(7,0))
         self.adb_output=tk.Text(shell,height=7,bg="#0b1220",fg="#d1d5db",insertbackground="white",relief="flat",wrap="word",font=("Monospace",10)); self.adb_output.grid(row=2,column=0,sticky="nsew")
         self.adb_output.insert("end","Select a device, then run dumpsys battery or another trusted shell command.\n"); self.adb_output.configure(state="disabled")
-        self.adb_log_process=None; self.adb_log_window=None; self.adb_log_text=None
+        self.adb_log_process = None
+        self.adb_log_window = None
+        self.adb_log_text = None
+        self.adb_log_filter = tk.StringVar()
+        self.adb_log_paused = False
+        self.adb_log_lines = []
 
     def _refresh_adb_devices(self):
         binary=self._tool_path("adb.exe" if os.name == "nt" else "adb") or self._tool_path("adb")
@@ -347,7 +352,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self._append("ADB scan: "+(", ".join(labels) if labels else "no devices found"))
 
     def _adb_require(self, states=("device",)):
-        binary=shutil.which("adb")
+        binary = self._tool_path("adb.exe" if os.name == "nt" else "adb") or self._tool_path("adb")
         if not binary: messagebox.showerror("ADB not found","Install Android SDK Platform-Tools and ensure adb is on PATH."); return None
         target=getattr(self,"_adb_targets",{}).get(self.adb_device.get())
         if not target: messagebox.showwarning("Select device","Refresh devices and select a device."); return None
@@ -541,7 +546,10 @@ class PayloadDumperApp(TkinterDnD.Tk):
         if not selected:return
         text=self.adb_shell_command.get().strip()
         if not text:messagebox.showwarning("Shell command required","Enter a command such as dumpsys battery.");return
-        binary,serial=selected; self._append("Running adb shell command on "+serial)
+        risky=re.compile(r"(^|[;&|]\\s*)(rm\\s+-rf|reboot|poweroff|shutdown|mkfs\\b|dd\\b|format\\b|wipe\\b|setprop\\b|pm\\s+(uninstall|disable-user)|svc\\s+.*disable)",re.I)
+        if risky.search(text) and not messagebox.askyesno("Confirm potentially destructive shell command","This command may change device state or delete data:\\n\\n"+text+"\\n\\nRun it on "+self.adb_device.get()+"?",icon="warning"):
+            self._append("ADB shell command cancelled by user.");return
+        binary,serial=selected; self._append("Running adb shell command on "+serial+": "+text)
         threading.Thread(target=self._adb_task,args=([binary,"-s",serial,"shell",text],90,"shell"),daemon=True).start()
 
     def _append_adb_output(self, text):
@@ -551,12 +559,23 @@ class PayloadDumperApp(TkinterDnD.Tk):
         selected=self._adb_require(("device",))
         if not selected:return
         if self.adb_log_process and self.adb_log_process.poll() is None:messagebox.showinfo("Logcat running","Stop the current logcat window first.");return
-        binary,serial=selected; window=tk.Toplevel(self); window.title("DroidLab Live Logcat - "+serial); window.geometry("900x600"); window.configure(bg="#111827")
-        text=tk.Text(window,bg="#0b1220",fg="#d1d5db",wrap="none",font=("Monospace",10)); text.pack(fill="both",expand=True,padx=8,pady=8)
+        binary,serial=selected
+        window=tk.Toplevel(self); window.title("DroidLab Live Logcat - "+serial); window.geometry("1000x650"); window.configure(bg="#111827")
+        toolbar=ttk.Frame(window); toolbar.pack(fill="x",padx=8,pady=(8,0))
+        ttk.Label(toolbar,text="Filter").pack(side="left",padx=(0,6))
+        self.adb_log_filter=tk.StringVar()
+        ttk.Entry(toolbar,textvariable=self.adb_log_filter).pack(side="left",fill="x",expand=True)
+        text=tk.Text(window,bg="#0b1220",fg="#d1d5db",wrap="none",font=("Monospace",10),state="disabled")
+        text.pack(fill="both",expand=True,padx=8,pady=8)
         self.adb_log_window,self.adb_log_text=window,text
+        self.adb_log_lines=[]; self.adb_log_paused=False
+        self.adb_log_filter.trace_add("write",lambda *_:self._render_adb_logcat())
         try:self.adb_log_process=subprocess.Popen([binary,"-s",serial,"logcat"],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,bufsize=1)
         except OSError as exc:window.destroy(); self.adb_log_window=self.adb_log_text=None; messagebox.showerror("Logcat failed",str(exc)); return
-        ttk.Button(window,text="Stop logcat",command=self._stop_adb_logcat).pack(pady=(0,8))
+        buttons=ttk.Frame(window); buttons.pack(fill="x",padx=8,pady=(0,8))
+        self.adb_log_pause_button=ttk.Button(buttons,text="Pause display",command=self._toggle_adb_logcat_pause); self.adb_log_pause_button.pack(side="left")
+        ttk.Button(buttons,text="Save visible log…",command=self._save_visible_adb_logcat).pack(side="left",padx=6)
+        ttk.Button(buttons,text="Stop logcat",command=self._stop_adb_logcat).pack(side="right")
         process=self.adb_log_process
         def reader():
             try:
@@ -564,6 +583,29 @@ class PayloadDumperApp(TkinterDnD.Tk):
                     for line in process.stdout:self.events.put(("adb_log_line",line.rstrip("\n")))
             finally:self.events.put(("adb_log_end",None))
         threading.Thread(target=reader,daemon=True).start(); window.protocol("WM_DELETE_WINDOW",self._stop_adb_logcat)
+
+    def _render_adb_logcat(self):
+        if not self.adb_log_text or not self.adb_log_window or not self.adb_log_window.winfo_exists(): return
+        needle=self.adb_log_filter.get().casefold().strip()
+        visible=[line for line in self.adb_log_lines if not needle or needle in line.casefold()]
+        self.adb_log_text.configure(state="normal"); self.adb_log_text.delete("1.0","end")
+        if visible: self.adb_log_text.insert("end","\n".join(visible[-5000:])+"\n"); self.adb_log_text.see("end")
+        self.adb_log_text.configure(state="disabled")
+
+    def _toggle_adb_logcat_pause(self):
+        self.adb_log_paused=not self.adb_log_paused
+        self.adb_log_pause_button.configure(text="Resume display" if self.adb_log_paused else "Pause display")
+
+    def _save_visible_adb_logcat(self):
+        needle=self.adb_log_filter.get().casefold().strip()
+        visible=[line for line in self.adb_log_lines if not needle or needle in line.casefold()]
+        path=filedialog.asksaveasfilename(title="Save filtered logcat",defaultextension=".txt",initialfile="logcat-filtered.txt",filetypes=[("Text files","*.txt"),("All files","*")])
+        if not path:return
+        try:
+            with open(path,"w",encoding="utf-8") as output: output.write("\n".join(visible)+("\n" if visible else ""))
+            self._append("Saved "+str(len(visible))+" filtered logcat lines to "+path)
+            messagebox.showinfo("Logcat saved","Saved "+str(len(visible))+" lines to:\n"+path)
+        except OSError as exc: messagebox.showerror("Logcat save failed",str(exc))
 
     def _stop_adb_logcat(self):
         if self.adb_log_process and self.adb_log_process.poll() is None:self.adb_log_process.terminate()
@@ -603,6 +645,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         if not path:return
         binary,serial=selected
         if not messagebox.askyesno("Create bugreport","The report may include device identifiers, logs, and app activity.\nSave diagnostics from "+serial+" to:\n"+path+"?",icon="warning"):return
+        self._bugreport_target_path=path
         threading.Thread(target=self._adb_task,args=([binary,"-s",serial,"bugreport",path],600,"bugreport"),daemon=True).start()
 
     def _run_fastboot_maintenance(self, operation, partition=None):
@@ -658,7 +701,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         if path: self.flash_image.set(path)
 
     def _refresh_fastboot_devices(self):
-        binary = shutil.which("fastboot")
+        binary = self._tool_path("fastboot.exe" if os.name == "nt" else "fastboot") or self._tool_path("fastboot")
         if not binary: messagebox.showerror("Fastboot not found", "Install Android platform-tools and ensure fastboot is on PATH."); return
         try: result = subprocess.run([binary, "devices", "-l"], capture_output=True, text=True, timeout=8, check=False)
         except (OSError, subprocess.TimeoutExpired) as exc: messagebox.showerror("Device detection failed", str(exc)); return
@@ -671,7 +714,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.flash_command.set("Select an image, partition, and one Fastboot device." if not (image and part and serial) else "fastboot -s " + serial + " flash " + part + " " + shlex.quote(image))
 
     def _flash_image(self):
-        image = Path(self.flash_image.get().strip().strip(chr(34)).strip(chr(39))).expanduser(); part = self.flash_partition.get().strip(); serial = self.fastboot_device.get().strip(); binary = shutil.which("fastboot")
+        image = Path(self.flash_image.get().strip().strip(chr(34)).strip(chr(39))).expanduser(); part = self.flash_partition.get().strip(); serial = self.fastboot_device.get().strip(); binary = self._tool_path("fastboot.exe" if os.name == "nt" else "fastboot") or self._tool_path("fastboot")
         if not binary: messagebox.showerror("Fastboot not found", "Install Android platform-tools and ensure fastboot is on PATH."); return
         if not image.is_file() or image.suffix.lower() != ".img": messagebox.showerror("Invalid image", "Choose an existing .img file."); return
         if not re.fullmatch(r"[A-Za-z0-9_.-]+", part): messagebox.showerror("Invalid partition", "Enter a valid partition name."); return
@@ -902,14 +945,19 @@ class PayloadDumperApp(TkinterDnD.Tk):
                 if kind=="log":self._append(payload)
                 elif kind=="adb_log_line":
                     if self.adb_log_text and self.adb_log_window and self.adb_log_window.winfo_exists():
-                        self.adb_log_text.insert("end",payload+"\n"); self.adb_log_text.see("end")
+                        self.adb_log_lines.append(payload)
+                        if len(self.adb_log_lines)>10000: del self.adb_log_lines[:len(self.adb_log_lines)-10000]
+                        if not self.adb_log_paused: self._render_adb_logcat()
                 elif kind=="adb_result":
                     kind_name,code,output=payload
                     self._append("ADB "+kind_name+" result:\n"+output)
                     if kind_name=="shell":self._append_adb_output(output)
                     elif kind_name=="bugreport":
-                        if code==0:messagebox.showinfo("Bugreport complete","Saved bugreport to the selected path.\n"+output)
-                        else:messagebox.showerror("Bugreport failed",output)
+                        report_path=getattr(self,"_bugreport_target_path","")
+                        if code==0 and report_path and Path(report_path).is_file():
+                            messagebox.showinfo("Bugreport complete","Saved archive ("+str(Path(report_path).stat().st_size)+" bytes):\n"+report_path+"\n\nBugreports may contain sensitive device data.")
+                        elif code==0: messagebox.showwarning("Bugreport status","ADB returned success, but the expected archive was not found. Check output:\n"+output)
+                        else: messagebox.showerror("Bugreport failed",output)
                     elif kind_name=="sideload":
                         if code==0:messagebox.showinfo("Sideload complete","ADB reported that the sideload command completed.")
                         else:messagebox.showerror("Sideload failed",output)
