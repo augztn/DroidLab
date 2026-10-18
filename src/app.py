@@ -30,20 +30,37 @@ def _log_directory():
 
 def _configure_logging():
     directory = _log_directory()
+    log_file = directory / "droidlab.log"
     logger = logging.getLogger()
-    # __init__ and the module entry point can both call this; avoid duplicate handlers.
-    if any(getattr(handler, "_droidlab_handler", False) for handler in logger.handlers):
-        return directory / "droidlab.log"
     try:
         directory.mkdir(parents=True, exist_ok=True)
-        handler = RotatingFileHandler(directory / "droidlab.log", maxBytes=2 * 1024 * 1024, backupCount=4, encoding="utf-8")
-        handler._droidlab_handler = True
-        handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(threadName)s | %(name)s | %(message)s"))
+        # Keep exactly one file handler for this path, even if an earlier
+        # startup path or packaged runtime installed duplicate handlers.
+        matching = [
+            handler for handler in logger.handlers
+            if isinstance(handler, RotatingFileHandler)
+            and Path(getattr(handler, "baseFilename", "")).resolve() == log_file.resolve()
+        ]
+        marked = [handler for handler in matching if getattr(handler, "_droidlab_handler", False)]
+        keep = marked[0] if marked else (matching[0] if matching else None)
+        for handler in matching:
+            if handler is not keep:
+                logger.removeHandler(handler)
+                try:
+                    handler.close()
+                except OSError:
+                    pass
+        if keep is None:
+            keep = RotatingFileHandler(log_file, maxBytes=2 * 1024 * 1024, backupCount=4, encoding="utf-8")
+            logger.addHandler(keep)
+        keep._droidlab_handler = True
+        keep.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(threadName)s | %(name)s | %(message)s"))
         logger.setLevel(logging.INFO)
-        logger.addHandler(handler)
-        logging.info("==== %s starting ====", APP_NAME)
-        logging.info("Platform: %s | Python: %s | frozen: %s", platform.platform(), sys.version.replace("\n", " "), bool(getattr(sys, "frozen", False)))
-        return directory / "droidlab.log"
+        if not getattr(logger, "_droidlab_started", False):
+            logger._droidlab_started = True
+            logging.info("==== %s starting ====", APP_NAME)
+            logging.info("Platform: %s | Python: %s | frozen: %s", platform.platform(), sys.version.replace("\n", " "), bool(getattr(sys, "frozen", False)))
+        return log_file
     except OSError:
         logging.basicConfig(level=logging.INFO)
         logging.exception("Could not initialize file logging at %s", directory)
@@ -669,7 +686,39 @@ class PayloadDumperApp(TkinterDnD.Tk):
         threading.Thread(target=self._adb_task,args=([binary,"-s",serial,"shell",text],90,"shell"),daemon=True).start()
 
     def _append_adb_output(self, text):
-        self.adb_output.configure(state="normal"); self.adb_output.insert("end",text+"\n"); self.adb_output.see("end"); self.adb_output.configure(state="disabled")
+        """Show a plain-language battery summary before retaining raw command output."""
+        display = text
+        if "Current Battery Service state:" in text and re.search(r"(?m)^\s*level:\s*\d+", text):
+            values = {}
+            for line in text.splitlines():
+                match = re.match(r"\s*([A-Za-z][A-Za-z ]*):\s*(.*?)\s*$", line)
+                if match:
+                    values[match.group(1).strip().lower()] = match.group(2).strip()
+
+            def number(key):
+                try:
+                    return int(values[key])
+                except (KeyError, ValueError):
+                    return None
+
+            level, voltage, temp = number("level"), number("voltage"), number("temperature")
+            status_map = {"1": "Unknown", "2": "Charging", "3": "Discharging", "4": "Not charging", "5": "Full"}
+            health_map = {"1": "Unknown", "2": "Good", "3": "Overheat", "4": "Dead", "5": "Over voltage", "6": "Unspecified failure", "7": "Cold"}
+            summary = ["BATTERY SUMMARY"]
+            if level is not None:
+                summary.append(f"Battery level: {level}%")
+            if temp is not None:
+                summary.append(f"Temperature: {temp / 10:.1f} °C")
+            if voltage is not None:
+                summary.append(f"Voltage: {voltage} mV")
+            summary.append("Status: " + status_map.get(values.get("status", ""), "Not reported"))
+            summary.append("Android battery health flag: " + health_map.get(values.get("health", ""), "Not reported") + " (not a capacity-health percentage)")
+            summary.append("Capacity fields below are device-reported; their units and accuracy are not verified.")
+            display = "\n".join(summary) + "\n\nADVANCED RAW OUTPUT\n" + text
+        self.adb_output.configure(state="normal")
+        self.adb_output.insert("end", display + "\n")
+        self.adb_output.see("end")
+        self.adb_output.configure(state="disabled")
 
     def _start_adb_logcat(self):
         selected = self._adb_require(("device",))
