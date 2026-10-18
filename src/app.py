@@ -374,6 +374,10 @@ class PayloadDumperApp(TkinterDnD.Tk):
             self._show_device_workspace("fastboot")
         else:
             self._show_device_workspace("adb")
+            if hasattr(self, "device_mode_status"):
+                adb_state = state.split(":", 1)[1] if state.startswith("adb:") else state
+                mode = {"device": "ADB / Android", "recovery": "ADB Recovery", "sideload": "ADB Sideload", "unauthorized": "ADB Unauthorized", "offline": "ADB Offline"}.get(adb_state, "ADB (" + adb_state + ")")
+                self.device_mode_status.set("MODE DETECTOR: " + mode + " · Serial: " + serial)
         self._update_reboot_actions()
 
     def _build_flash_tab(self, tab):
@@ -552,7 +556,10 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.adb_device=tk.StringVar(); self.adb_device_combo=ttk.Combobox(row,textvariable=self.adb_device,state="readonly"); self.adb_device_combo.pack(side="left",fill="x",expand=True)
         ttk.Button(row,text="Refresh devices",command=self._refresh_adb_devices).pack(side="left",padx=(8,0))
         self.adb_device_status=tk.StringVar(value="Connect device or enter recovery sideload mode, then refresh.")
-        ttk.Label(device,textvariable=self.adb_device_status,background="#1f2937",foreground="#cbd5e1",wraplength=1000).pack(anchor="w",pady=(5,0))
+        self.device_mode_status = tk.StringVar(value="MODE DETECTOR: Waiting for device scan")
+        ttk.Label(device,textvariable=self.device_mode_status,background="#1f2937",foreground="#86efac",
+                  wraplength=1000,font=("Sans",10,"bold")).pack(anchor="w",pady=(6,0))
+        ttk.Label(device,textvariable=self.adb_device_status,background="#1f2937",foreground="#cbd5e1",wraplength=1000).pack(anchor="w",pady=(3,0))
         # Two-column workspace keeps controls visible beside the live console.
         workspace=ttk.Frame(tab); workspace.grid(row=3,column=0,sticky="nsew"); workspace.columnconfigure(0,weight=3,uniform="adb_workspace"); workspace.columnconfigure(1,weight=2,uniform="adb_workspace"); workspace.rowconfigure(0,weight=1)
         lower=ttk.Frame(workspace); lower.grid(row=0,column=0,sticky="nsew",padx=(0,10)); lower.columnconfigure(0,weight=1); lower.rowconfigure(2,weight=1)
@@ -642,13 +649,44 @@ class PayloadDumperApp(TkinterDnD.Tk):
         else:
             status_lines.append("Fastboot tools not found")
         previous = self.adb_device.get()
+        # Classify the selected device before enabling mode-specific actions.
         self._adb_targets = targets
         labels = list(targets)
         self.adb_device_combo["values"] = labels
         self.adb_device.set(previous if previous in targets else (labels[0] if len(labels) == 1 else ""))
         self._on_shared_device_selected()
         self.adb_device_status.set(" | ".join(status_lines))
+        selected = targets.get(self.adb_device.get())
+        if selected:
+            serial, state = selected
+            if state == "fastboot":
+                mode_detail = self._detect_fastboot_submode(fastboot_binary, serial)
+                self.device_mode_status.set("MODE DETECTOR: " + mode_detail + " · Serial: " + serial)
+            elif state.startswith("adb:"):
+                adb_state = state.split(":", 1)[1]
+                mode = {"device": "ADB / Android", "recovery": "ADB Recovery", "sideload": "ADB Sideload", "unauthorized": "ADB Unauthorized", "offline": "ADB Offline"}.get(adb_state, "ADB (" + adb_state + ")")
+                self.device_mode_status.set("MODE DETECTOR: " + mode + " · Serial: " + serial)
+        else:
+            self.device_mode_status.set("MODE DETECTOR: No device detected · Check USB, drivers/udev rules, and Platform-Tools")
         self._append("Combined device scan: " + (", ".join(labels) if labels else "no ADB or Fastboot devices found"))
+
+    def _detect_fastboot_submode(self, binary, serial):
+        """Distinguish bootloader Fastboot from userspace Fastbootd when supported."""
+        if not binary:
+            return "Fastboot"
+        try:
+            result = subprocess.run([binary, "-s", serial, "getvar", "is-userspace"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=4, check=False, **_windows_process_options())
+            output = (result.stdout or "") + "\n" + (result.stderr or "")
+            normalized = output.lower()
+            if re.search(r"is-userspace\s*:\s*yes|is-userspace\s*=\s*yes", normalized):
+                return "Fastbootd (userspace Fastboot)"
+            if re.search(r"is-userspace\s*:\s*no|is-userspace\s*=\s*no", normalized):
+                return "Bootloader Fastboot"
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        return "Fastboot (submode unknown)"
 
     def _update_reboot_actions(self):
         target = getattr(self, "_adb_targets", {}).get(self.adb_device.get())
