@@ -80,11 +80,22 @@ def extract(source: str, output_dir: str, selected: list[str] | None = None,
     finished = threading.Event()
     if cancel_event is not None:
         def watch_cancel():
+            """Stop the backend even while the main thread is blocked reading output."""
             while not finished.wait(0.1):
-                if cancel_event.is_set():
-                    if proc.poll() is None:
+                if not cancel_event.is_set():
+                    continue
+                if proc.poll() is None:
+                    try:
                         proc.terminate()
-                    return
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait()
+                    except OSError:
+                        # The process may have exited between poll() and terminate().
+                        pass
+                return
+
         threading.Thread(target=watch_cancel, daemon=True).start()
     try:
         while True:
