@@ -377,111 +377,169 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self._update_reboot_actions()
 
     def _build_flash_tab(self, tab):
-        tab.columnconfigure(0, weight=7, uniform="flash_columns")
-        tab.columnconfigure(1, weight=4, uniform="flash_columns")
-        tab.rowconfigure(2, weight=1)
+        """Build the Fastboot workspace with device-first selection and a live console."""
+        tab.columnconfigure(0, weight=3, uniform="fastboot_workspace")
+        tab.columnconfigure(1, weight=2, uniform="fastboot_workspace")
+        tab.rowconfigure(3, weight=1)
 
-        ttk.Label(tab, text="Fastboot & Flashing", font=("Sans", 22, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 6))
-        ttk.Label(tab, text="Drop an image to detect its likely partition. Review all details before flashing.", style="Muted.TLabel").grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 12))
+        ttk.Label(tab, text="Fastboot & Flashing", font=("Sans", 22, "bold")).grid(
+            row=0, column=0, columnspan=2, sticky="w", pady=(0, 6))
+        ttk.Label(tab, text="Select the connected device first, then choose an image or maintenance action.",
+                  style="Muted.TLabel").grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 10))
 
-        # Keep flashing controls in their own column so the command reference never overlaps them.
+        # Device selector comes first so every later operation has a clear target.
+        device = ttk.Frame(tab, style="Panel.TFrame", padding=10)
+        device.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(0, 10))
+        device.columnconfigure(0, weight=1)
+        ttk.Label(device, text="FASTBOOT DEVICE", background="#1f2937", foreground="#93c5fd",
+                  font=("Sans", 10, "bold")).grid(row=0, column=0, sticky="w")
+        self.fastboot_device = tk.StringVar()
+        self.device_combo = ttk.Combobox(device, textvariable=self.fastboot_device, state="readonly")
+        self.device_combo.grid(row=1, column=0, sticky="ew", pady=(5, 0))
+        ttk.Button(device, text="Refresh devices", command=self._refresh_fastboot_devices).grid(
+            row=1, column=1, padx=(8, 0), pady=(5, 0))
+
         controls = ttk.Frame(tab)
-        controls.grid(row=2, column=0, sticky="nsew", padx=(0, 12))
+        controls.grid(row=3, column=0, sticky="nsew", padx=(0, 10))
         controls.columnconfigure(0, weight=1)
+        controls.rowconfigure(4, weight=1)
 
-        box = ttk.Frame(controls, style="Panel.TFrame", padding=14)
-        box.grid(row=0, column=0, sticky="ew", pady=(0, 10))
-        ttk.Label(box, text="IMAGE FILE", background="#1f2937", foreground="#93c5fd", font=("Sans", 10, "bold")).pack(anchor="w")
-        row = ttk.Frame(box, style="Panel.TFrame")
-        row.pack(fill="x", pady=(6, 0))
+        box = ttk.Frame(controls, style="Panel.TFrame", padding=12)
+        box.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        ttk.Label(box, text="IMAGE FILE", background="#1f2937", foreground="#93c5fd",
+                  font=("Sans", 10, "bold")).pack(anchor="w")
+        image_row = ttk.Frame(box, style="Panel.TFrame")
+        image_row.pack(fill="x", pady=(5, 0))
         self.flash_image = tk.StringVar()
-        self.flash_entry = ttk.Entry(row, textvariable=self.flash_image)
-        self.flash_entry.pack(side="left", fill="x", expand=True, ipady=5)
-        ttk.Button(row, text="Browse…", command=self._browse_flash_image).pack(side="left", padx=(8, 0))
+        self.flash_entry = ttk.Entry(image_row, textvariable=self.flash_image)
+        self.flash_entry.pack(side="left", fill="x", expand=True, ipady=4)
+        ttk.Button(image_row, text="Browse…", command=self._browse_flash_image).pack(side="left", padx=(7, 0))
         self._enable_drop(box)
         self._enable_drop(self.flash_entry)
         self._enable_drop(tab)
 
-        device = ttk.Frame(controls, style="Panel.TFrame", padding=14)
-        device.grid(row=1, column=0, sticky="ew", pady=(0, 10))
-        ttk.Label(device, text="FASTBOOT DEVICE", background="#1f2937", foreground="#93c5fd", font=("Sans", 10, "bold")).pack(anchor="w")
-        row = ttk.Frame(device, style="Panel.TFrame")
-        row.pack(fill="x", pady=(6, 0))
-        self.fastboot_device = tk.StringVar()
-        self.device_combo = ttk.Combobox(row, textvariable=self.fastboot_device, state="readonly")
-        self.device_combo.pack(side="left", fill="x", expand=True)
-        ttk.Button(row, text="Refresh devices", command=self._refresh_fastboot_devices).pack(side="left", padx=(8, 0))
-        ttk.Label(device, text="Target partition", background="#1f2937", foreground="#93c5fd").pack(anchor="w", pady=(10, 0))
+        partition = ttk.Frame(controls, style="Panel.TFrame", padding=12)
+        partition.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+        ttk.Label(partition, text="TARGET PARTITION", background="#1f2937", foreground="#93c5fd",
+                  font=("Sans", 10, "bold")).pack(anchor="w")
         self.flash_partition = tk.StringVar()
         self.partition_combo = ttk.Combobox(
-            device, textvariable=self.flash_partition,
-            values=("boot", "vendor", "vendor_boot", "init_boot", "dtbo", "vbmeta", "recovery", "system", "product", "odm", "system_ext", "vbmeta_system", "vbmeta_vendor"),
-            state="normal",
-        )
+            partition, textvariable=self.flash_partition,
+            values=("boot", "vendor", "vendor_boot", "init_boot", "dtbo", "vbmeta", "recovery",
+                    "system", "product", "odm", "system_ext", "vbmeta_system", "vbmeta_vendor"),
+            state="normal")
         self.partition_combo.pack(fill="x", pady=(5, 0))
 
-        preview = ttk.Frame(controls, style="Panel.TFrame", padding=14)
-        preview.grid(row=2, column=0, sticky="ew", pady=(0, 10))
-        ttk.Label(preview, text="COMMAND PREVIEW", background="#1f2937", foreground="#93c5fd", font=("Sans", 10, "bold")).pack(anchor="w")
-        self.flash_command = tk.StringVar(value="Select an image and Fastboot device to preview the command.")
-        ttk.Label(preview, textvariable=self.flash_command, background="#0b1220", foreground="#f1f5f9", padding=10, wraplength=650, justify="left").pack(fill="x", pady=(6, 0))
+        preview = ttk.Frame(controls, style="Panel.TFrame", padding=12)
+        preview.grid(row=2, column=0, sticky="ew", pady=(0, 8))
+        ttk.Label(preview, text="COMMAND PREVIEW", background="#1f2937", foreground="#93c5fd",
+                  font=("Sans", 10, "bold")).pack(anchor="w")
+        self.flash_command = tk.StringVar(value="Select an image, partition, and Fastboot device.")
+        ttk.Label(preview, textvariable=self.flash_command, background="#0b1220", foreground="#f1f5f9",
+                  padding=9, wraplength=700, justify="left").pack(fill="x", pady=(5, 0))
 
-        ttk.Label(
-            controls,
-            text="FLASHING RISK  ·  An incompatible image or incorrect partition can stop Android from booting. Confirm the image matches your exact device and verify the target partition before flashing.",
-            foreground="#fecaca", background="#2a1d27", wraplength=900, justify="left",
-            font=("Sans", 10), padding=12,
-        ).grid(row=3, column=0, sticky="ew", pady=(2, 12))
-        row = ttk.Frame(controls)
-        row.grid(row=4, column=0, sticky="w")
-        ttk.Button(row, text="Preview command", command=self._update_flash_preview).pack(side="left")
-        ttk.Button(row, text="Flash image…", command=self._flash_image).pack(side="left", padx=(8, 0))
+        ttk.Label(controls,
+                  text="FLASHING RISK · An incompatible image or incorrect partition can stop Android from booting. Verify compatibility before flashing.",
+                  foreground="#fecaca", background="#2a1d27", wraplength=850, justify="left",
+                  font=("Sans", 10), padding=10).grid(row=3, column=0, sticky="ew", pady=(0, 8))
+        flash_buttons = ttk.Frame(controls)
+        flash_buttons.grid(row=4, column=0, sticky="nw")
+        ttk.Button(flash_buttons, text="Preview command", command=self._update_flash_preview).pack(side="left")
+        ttk.Button(flash_buttons, text="Flash image…", command=self._flash_image).pack(side="left", padx=(7, 0))
 
-        # Executable destructive maintenance actions; each action requires explicit confirmation.
-        reference = ttk.Frame(tab, style="Panel.TFrame", padding=14)
-        reference.grid(row=2, column=1, sticky="nsew")
-        ttk.Label(reference, text="ERASING & FORMATTING", background="#1f2937", foreground="#fb923c", font=("Sans", 13, "bold")).pack(anchor="w")
-        ttk.Label(reference, text="Destructive actions permanently remove data. Confirm the selected device before continuing.", background="#1f2937", foreground="#fecaca", justify="left", wraplength=440, font=("Sans", 11)).pack(anchor="w", pady=(8, 12))
-        ttk.Button(reference, text="Erase cache", command=lambda: self._run_fastboot_maintenance("erase", "cache")).pack(fill="x", pady=3)
-        ttk.Button(reference, text="Erase userdata", command=lambda: self._run_fastboot_maintenance("erase", "userdata")).pack(fill="x", pady=3)
-        ttk.Button(reference, text="Wipe data (fastboot -w)", command=lambda: self._run_fastboot_maintenance("-w")).pack(fill="x", pady=3)
+        # Advanced commands live below the flashing controls, not under the console.
+        manual = ttk.Frame(controls, style="Panel.TFrame", padding=12)
+        manual.grid(row=5, column=0, sticky="ew", pady=(10, 0))
+        ttk.Label(manual, text="ADVANCED FASTBOOT COMMAND", background="#1f2937",
+                  foreground="#93c5fd", font=("Sans", 11, "bold")).pack(anchor="w")
+        ttk.Label(manual, text="Run host-side commands such as fastboot devices, fastboot getvar all, or fastboot reboot. Paths with spaces are supported.",
+                  background="#1f2937", foreground="#cbd5e1", wraplength=800, justify="left").pack(
+                      anchor="w", pady=(4, 6))
+        self.fastboot_manual_command = tk.StringVar(value="fastboot devices")
+        self.fastboot_manual_entry = ttk.Entry(manual, textvariable=self.fastboot_manual_command)
+        self.fastboot_manual_entry.pack(fill="x", pady=(0, 6), ipady=4)
+        manual_buttons = ttk.Frame(manual, style="Panel.TFrame")
+        manual_buttons.pack(fill="x")
+        ttk.Button(manual_buttons, text="Run Fastboot command", command=self._run_fastboot_manual).pack(side="left")
+        ttk.Button(manual_buttons, text="Clear", command=lambda: self.fastboot_manual_command.set("")).pack(
+            side="left", padx=(7, 0))
+        self._enable_command_drop(self.fastboot_manual_entry, self.fastboot_manual_command, "fastboot")
+
+        # Right side: reboot controls beside destructive maintenance, with console below.
+        right = ttk.Frame(tab)
+        right.grid(row=3, column=1, sticky="nsew")
+        right.columnconfigure(0, weight=1)
+        right.rowconfigure(1, weight=1)
+        action_row = ttk.Frame(right)
+        action_row.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        action_row.columnconfigure(0, weight=1, uniform="fastboot_actions")
+        action_row.columnconfigure(1, weight=1, uniform="fastboot_actions")
+
+        reboot = ttk.Frame(action_row, style="Panel.TFrame", padding=10)
+        reboot.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+        ttk.Label(reboot, text="REBOOT CONTROLS", background="#1f2937", foreground="#93c5fd",
+                  font=("Sans", 11, "bold")).pack(anchor="w", pady=(0, 5))
+        ttk.Button(reboot, text="Reboot system", command=lambda: self._fastboot_quick_action(["reboot"])).pack(
+            fill="x", pady=2)
+        ttk.Button(reboot, text="Reboot recovery", command=lambda: self._fastboot_quick_action(["reboot", "recovery"])).pack(
+            fill="x", pady=2)
+        ttk.Button(reboot, text="Reboot bootloader", command=lambda: self._fastboot_quick_action(["reboot-bootloader"])).pack(
+            fill="x", pady=2)
+
+        reference = ttk.Frame(action_row, style="Panel.TFrame", padding=10)
+        reference.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
+        ttk.Label(reference, text="ERASE & FORMAT", background="#1f2937", foreground="#fb923c",
+                  font=("Sans", 11, "bold")).pack(anchor="w", pady=(0, 5))
+        ttk.Button(reference, text="Erase cache", command=lambda: self._run_fastboot_maintenance("erase", "cache")).pack(
+            fill="x", pady=2)
+        ttk.Button(reference, text="Erase userdata", command=lambda: self._run_fastboot_maintenance("erase", "userdata")).pack(
+            fill="x", pady=2)
+        ttk.Button(reference, text="Wipe data (fastboot -w)", command=lambda: self._run_fastboot_maintenance("-w")).pack(
+            fill="x", pady=2)
         self.maintenance_command = tk.StringVar(value="Select an operation to preview its command.")
-        ttk.Label(reference, text="COMMAND", background="#1f2937", foreground="#93c5fd").pack(anchor="w", pady=(14, 5))
-        ttk.Label(reference, textvariable=self.maintenance_command, background="#0b1220", foreground="#f1f5f9", padding=9, justify="left", wraplength=520, font=("Monospace", 10)).pack(fill="x")
+        ttk.Label(reference, textvariable=self.maintenance_command, background="#0b1220", foreground="#f1f5f9",
+                  padding=7, justify="left", wraplength=320, font=("Monospace", 9)).pack(fill="x", pady=(5, 0))
         self.maintenance_status = tk.StringVar(value="No maintenance command executed.")
-        ttk.Label(reference, textvariable=self.maintenance_status, background="#1f2937", foreground="#cbd5e1", wraplength=520, justify="left", font=("Sans", 10)).pack(anchor="w", pady=(10, 0))
+        ttk.Label(reference, textvariable=self.maintenance_status, background="#1f2937", foreground="#cbd5e1",
+                  wraplength=320, justify="left", font=("Sans", 9)).pack(anchor="w", pady=(5, 0))
 
-        ttk.Label(reference, text="REAL-TIME CONSOLE / ACTIVITY", background="#1f2937", foreground="#93c5fd", font=("Sans", 11, "bold")).pack(anchor="w", pady=(12, 5))
-        fast_console_frame = ttk.Frame(reference, style="Panel.TFrame")
+        console_panel = ttk.Frame(right, style="Panel.TFrame", padding=10)
+        console_panel.grid(row=1, column=0, sticky="nsew")
+        ttk.Label(console_panel, text="REAL-TIME CONSOLE / ACTIVITY", background="#1f2937",
+                  foreground="#93c5fd", font=("Sans", 11, "bold")).pack(anchor="w", pady=(0, 5))
+        fast_console_frame = ttk.Frame(console_panel, style="Panel.TFrame")
         fast_console_frame.pack(fill="both", expand=True)
-        self.fastboot_console = tk.Text(fast_console_frame, height=8, bg="#0b1220", fg="#d1d5db", insertbackground="white", relief="flat", wrap="word", font=(self._mono_font, 9), state="disabled")
+        self.fastboot_console = tk.Text(fast_console_frame, height=12, bg="#0b1220", fg="#d1d5db",
+            insertbackground="white", relief="flat", wrap="word", font=(self._mono_font, 9), state="disabled")
         fast_console_scroll = ttk.Scrollbar(fast_console_frame, orient="vertical", command=self.fastboot_console.yview)
         self.fastboot_console.configure(yscrollcommand=fast_console_scroll.set)
         fast_console_scroll.pack(side="right", fill="y")
         self.fastboot_console.pack(side="left", fill="both", expand=True)
-        self._console_write(self.fastboot_console, "[DroidLab] Fastboot output will appear here in real time.\n")
-
-        # Advanced manual Fastboot console. Commands execute on the host using the
-        # bundled/PATH fastboot binary, not inside Android's device shell.
-        manual = ttk.Frame(reference, style="Panel.TFrame", padding=10)
-        manual.pack(fill="x", pady=(12, 0))
-        ttk.Label(manual, text="ADVANCED FASTBOOT COMMAND", background="#1f2937",
-                  foreground="#93c5fd", font=("Sans", 11, "bold")).pack(anchor="w")
-        ttk.Label(manual, text="Enter commands such as fastboot getvar all or fastboot reboot. Drag an image/file into the command field to insert its path. Destructive commands require confirmation.",
-                  background="#1f2937", foreground="#cbd5e1", wraplength=1100,
-                  justify="left").pack(anchor="w", pady=(4, 7))
-        self.fastboot_manual_command = tk.StringVar(value="fastboot devices")
-        self.fastboot_manual_entry = ttk.Entry(manual, textvariable=self.fastboot_manual_command)
-        self.fastboot_manual_entry.pack(fill="x", pady=(0, 7), ipady=4)
-        row = ttk.Frame(manual, style="Panel.TFrame")
-        row.pack(fill="x")
-        ttk.Button(row, text="Run Fastboot command", command=self._run_fastboot_manual).pack(side="left")
-        ttk.Button(row, text="Clear", command=lambda: self.fastboot_manual_command.set("")).pack(side="left", padx=(7, 0))
-        self._enable_command_drop(self.fastboot_manual_entry, self.fastboot_manual_command, "fastboot")
+        self._console_write(self.fastboot_console, "[DroidLab] Fastboot console ready. Commands and activity will appear here.\\n")
 
         self.flash_image.trace_add("write", lambda *_: self._on_flash_image_changed())
         self.flash_partition.trace_add("write", lambda *_: self._update_flash_preview())
         self.fastboot_device.trace_add("write", lambda *_: self._update_flash_preview())
+
+    def _fastboot_quick_action(self, args):
+        """Run a confirmed Fastboot reboot action through the live streaming runner."""
+        serial = self.fastboot_device.get().strip()
+        binary = self._tool_path("fastboot.exe" if os.name == "nt" else "fastboot") or self._tool_path("fastboot")
+        if not binary:
+            messagebox.showerror("Fastboot not found", "Install Android Platform-Tools or add fastboot to PATH.")
+            return
+        if not serial or serial not in self.device_combo["values"]:
+            messagebox.showwarning("Select Fastboot device", "Refresh devices and select a connected Fastboot device first.")
+            return
+        command = [binary, "-s", serial] + list(args)
+        rendered = " ".join(shlex.quote(part) for part in command)
+        if not messagebox.askyesno("Confirm reboot", "Execute this command on " + serial + "?\\n\\n" + rendered):
+            self._console_write(self.fastboot_console, "[DroidLab] Cancelled: " + rendered + "\\n")
+            return
+        self._append("Executing Fastboot action: " + rendered)
+        self._console_write(self.fastboot_console, "[DroidLab] $ " + rendered + "\\n")
+        self.status.set("Running Fastboot command…")
+        threading.Thread(target=self._adb_task, args=(command, 90, "fastboot_manual"), daemon=True).start()
 
     def _build_adb_tab(self, tab):
         tab.columnconfigure(0, weight=1)
