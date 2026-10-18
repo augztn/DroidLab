@@ -546,8 +546,8 @@ class PayloadDumperApp(TkinterDnD.Tk):
         if not selected:return
         text=self.adb_shell_command.get().strip()
         if not text:messagebox.showwarning("Shell command required","Enter a command such as dumpsys battery.");return
-        risky=re.compile(r"(^|[;&|]\\s*)(rm\\s+-rf|reboot|poweroff|shutdown|mkfs\\b|dd\\b|format\\b|wipe\\b|setprop\\b|pm\\s+(uninstall|disable-user)|svc\\s+.*disable)",re.I)
-        if risky.search(text) and not messagebox.askyesno("Confirm potentially destructive shell command","This command may change device state or delete data:\\n\\n"+text+"\\n\\nRun it on "+self.adb_device.get()+"?",icon="warning"):
+        risky=re.compile(r"(^|[;&|]\s*)(rm\s+-rf|reboot|poweroff|shutdown|mkfs\b|dd\b|format\b|wipe\b|setprop\b|pm\s+(uninstall|disable-user)|svc\s+.*disable)",re.I)
+        if risky.search(text) and not messagebox.askyesno("Confirm potentially destructive shell command","This command may change device state or delete data:\n\n"+text+"\n\nRun it on "+self.adb_device.get()+"?",icon="warning"):
             self._append("ADB shell command cancelled by user.");return
         binary,serial=selected; self._append("Running adb shell command on "+serial+": "+text)
         threading.Thread(target=self._adb_task,args=([binary,"-s",serial,"shell",text],90,"shell"),daemon=True).start()
