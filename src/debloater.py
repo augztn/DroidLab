@@ -1,7 +1,7 @@
-"""Conservative Android package management helpers for DroidLab.
+"""Conservative Android package-management helpers for DroidLab.
 
-This module intentionally ships no third-party safety database. Unknown packages
-remain unknown and core components are protected by explicit local rules.
+Community risk profiles supply context only; local core-package protections remain
+authoritative, and unknown packages are never assumed safe.
 """
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -41,6 +42,73 @@ RISKY_SYSTEM_EXACT = {
     "com.google.android.packageinstaller",
     "com.android.packageinstaller",
 }
+
+
+PROFILE_FILES = ("android.json", "samsung.json", "realme.json", "xiaomi.json")
+_PROFILE_RISK_WEIGHT = {"low": 1, "review": 2, "high": 3}
+
+
+def _profile_directory(profile_dir=None) -> Path:
+    if profile_dir is not None:
+        return Path(profile_dir)
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent)) / "safety-db"
+    return Path(__file__).resolve().parent.parent / "resources" / "safety-db"
+
+
+def load_package_profiles(profile_dir=None) -> dict[str, dict]:
+    """Load attributed offline community profiles, choosing the stricter duplicate risk."""
+    root = _profile_directory(profile_dir)
+    profiles: dict[str, dict] = {}
+    for filename in PROFILE_FILES:
+        path = root / filename
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        meta = payload.get("meta", {}) if isinstance(payload, dict) else {}
+        entries = payload.get("packages", {}) if isinstance(payload, dict) else {}
+        if not isinstance(entries, dict):
+            continue
+        vendor = str(meta.get("vendor", filename.removesuffix(".json")))
+        for package, record in entries.items():
+            if not isinstance(package, str) or not isinstance(record, dict):
+                continue
+            package = package.strip().lower()
+            if not re.fullmatch(r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+|android", package):
+                continue
+            risk = str(record.get("risk", "")).strip().lower()
+            if risk not in _PROFILE_RISK_WEIGHT:
+                continue
+            item = {
+                "risk": risk,
+                "category": str(record.get("category", "Unknown")),
+                "reason": str(record.get("reason", "Community profile contains no explanation.")),
+                "recommended": bool(record.get("recommended", False)),
+                "source": vendor,
+                "source_file": filename,
+            }
+            previous = profiles.get(package)
+            if previous:
+                sources = list(previous.get("sources", [previous.get("source", "")]))
+                if vendor not in sources:
+                    sources.append(vendor)
+                item["sources"] = sources
+                if _PROFILE_RISK_WEIGHT[previous["risk"]] > _PROFILE_RISK_WEIGHT[risk]:
+                    previous["sources"] = sources
+                    continue
+            else:
+                item["sources"] = [vendor]
+            profiles[package] = item
+    return profiles
+
+
+PACKAGE_PROFILES = load_package_profiles()
+
+
+def get_package_profile(package: str) -> dict:
+    """Return a copy of known community guidance, never an inferred safety guarantee."""
+    return dict(PACKAGE_PROFILES.get(package.strip().lower(), {}))
 
 
 class DebloaterError(RuntimeError):
@@ -130,14 +198,19 @@ def is_core_protected(package: str) -> bool:
 
 
 def classify_package(package: str, package_type: str) -> tuple[str, str]:
-    name = package.lower()
+    name = package.strip().lower()
     if is_core_protected(name):
         return "PROTECTED", "Core Android component; package actions are blocked."
     if name in RISKY_SYSTEM_EXACT:
-        return "HIGH RISK", "Important store/installer/search component; review dependencies carefully."
+        profile = get_package_profile(name)
+        return "HIGH RISK", profile.get("reason", "Important store/installer/search component; review dependencies carefully.")
+    profile = get_package_profile(name)
+    if profile:
+        label = {"high": "HIGH RISK", "review": "REVIEW", "low": "LOW RISK"}[profile["risk"]]
+        return label, profile["reason"]
     if package_type == "User":
         return "USER APP", "Installed for a user; verify app data and dependencies before removal."
-    return "UNKNOWN", "No bundled safety profile. Research this package before changing it."
+    return "UNKNOWN", "No bundled profile matched this package. Unknown does not mean safe."
 
 
 def scan_device(binary: str, serial: str) -> dict:
@@ -177,9 +250,14 @@ def scan_device(binary: str, serial: str) -> dict:
         else:
             package_type = "Unknown"
         risk, reason = classify_package(name, package_type)
+        profile = get_package_profile(name)
         packages.append({
             "name": name, "path": apk_path, "type": package_type,
             "risk": risk, "reason": reason,
+            "category": profile.get("category", "Unknown"),
+            "profile_source": profile.get("source", ""),
+            "profile_sources": profile.get("sources", []),
+            "profile_recommended": profile.get("recommended", False),
         })
     packages.sort(key=lambda item: (item["type"], item["name"].casefold()))
     brand = properties.get("ro.product.brand", "Unknown")
@@ -249,14 +327,22 @@ def read_package_selection(path: str) -> list[str]:
 
 
 def perform_package_action(binary: str, serial: str, action: str, packages: list[str],
-                           device_summary: str = "", progress=None) -> dict:
+                           device_summary: str = "", progress=None,
+                           allow_advanced: bool = False) -> dict:
     if action not in {"uninstall", "disable", "enable", "restore"}:
         raise DebloaterError(f"Unsupported package action: {action}")
     unique = list(dict.fromkeys(packages))
     blocked = [p for p in unique if is_core_protected(p)]
-    targets = [p for p in unique if not is_core_protected(p)]
+    blocked_advanced = [
+        p for p in unique
+        if p not in blocked and action in {"uninstall", "disable"}
+        and get_package_profile(p).get("risk") == "high" and not allow_advanced
+    ]
+    targets = [p for p in unique if p not in blocked and p not in blocked_advanced]
     if not targets:
-        raise DebloaterError("All selected packages are core-protected; no changes were made.")
+        return {"action": action, "succeeded": [], "failed": [],
+                "blocked": blocked, "blocked_advanced": blocked_advanced,
+                "rescue_path": ""}
     rescue_path = None
     if action in {"uninstall", "disable"}:
         rescue_path = write_rescue_point(serial, action, targets, device_summary)
@@ -287,7 +373,8 @@ def perform_package_action(binary: str, serial: str, action: str, packages: list
             if progress:
                 progress(f"{action.upper()} FAILED · {package} · {exc}")
     return {"action": action, "succeeded": succeeded, "failed": failed,
-            "blocked": blocked, "rescue_path": str(rescue_path) if rescue_path else ""}
+            "blocked": blocked, "blocked_advanced": blocked_advanced,
+            "rescue_path": str(rescue_path) if rescue_path else ""}
 
 
 class DebloaterTab:
@@ -301,6 +388,7 @@ class DebloaterTab:
         self.devices = {}
         self.busy = False
         self.filter_var = tk.StringVar()
+        self.risk_filter_var = tk.StringVar(value="All risks")
         self.device_var = tk.StringVar()
         self.advanced_var = tk.BooleanVar(value=False)
         self.status_var = tk.StringVar(value="Refresh devices, select an authorized device, then scan packages.")
@@ -338,7 +426,11 @@ class DebloaterTab:
         search.pack(side="left", fill="x", expand=True)
         self.count_label = ttk.Label(filter_row, text="0 packages", background="#1f2937", foreground="#cbd5e1")
         self.count_label.pack(side="right", padx=(10, 0))
+        self.risk_combo = ttk.Combobox(filter_row, textvariable=self.risk_filter_var, state="readonly", width=14,
+            values=("All risks", "PROTECTED", "HIGH RISK", "REVIEW", "LOW RISK", "USER APP", "UNKNOWN"))
+        self.risk_combo.pack(side="right", padx=(8, 0))
         self.filter_var.trace_add("write", lambda *_: self.render_packages())
+        self.risk_filter_var.trace_add("write", lambda *_: self.render_packages())
 
         columns = ("package", "type", "risk", "path")
         self.tree = ttk.Treeview(main, columns=columns, show="headings", selectmode="extended")
@@ -351,11 +443,13 @@ class DebloaterTab:
         self.tree.column("risk", width=115, anchor="center", stretch=False)
         self.tree.column("path", width=420, minwidth=180, stretch=True)
         self.tree.pack(fill="both", expand=True)
+        self.tree.bind("<Double-1>", self.show_package_details)
         actions = ttk.Frame(main, style="Panel.TFrame")
         actions.grid(row=2, column=0, sticky="ew", pady=(8, 0))
         for text, cmd in (
             ("Select visible", self.select_visible),
             ("Clear selection", self.clear_selection),
+            ("Package details…", self.show_package_details),
             ("Uninstall for user 0…", lambda: self.act("uninstall")),
             ("Disable…", lambda: self.act("disable")),
             ("Enable", lambda: self.act("enable")),
@@ -366,7 +460,7 @@ class DebloaterTab:
             ttk.Button(actions, text=text, command=cmd).pack(side="left", padx=(0, 5))
         ttk.Checkbutton(actions, text="Allow actions on non-core system apps (advanced)",
                         variable=self.advanced_var, style="TCheckbutton").pack(side="right")
-        warning = ttk.Label(p, text="Safety: unknown packages are not marked safe. Core components are blocked. System-package changes require Advanced Mode. Automatic rescue files contain package names, not APK backups; restore is best-effort.",
+        warning = ttk.Label(p, text=f"Community risk guidance: {len(PACKAGE_PROFILES)} package profiles loaded. Ratings may be outdated or inaccurate; LOW RISK is not a guarantee. Core components are blocked. System or high-risk changes require Advanced Mode. Rescue files store names, not APKs or user data.",
                             foreground="#fecaca", background="#2a1d27", wraplength=1100, justify="left", padding=9)
         warning.grid(row=4, column=0, sticky="ew", pady=(8, 0))
         ttk.Label(p, textvariable=self.status_var, style="Muted.TLabel").grid(row=5, column=0, sticky="w", pady=(6, 0))
@@ -423,15 +517,46 @@ class DebloaterTab:
 
     def render_packages(self):
         query = self.filter_var.get().strip().casefold()
+        risk_filter = self.risk_filter_var.get()
         for item in self.tree.get_children():
             self.tree.delete(item)
-        visible = [p for p in self.packages if not query or query in p["name"].casefold()
-                   or query in p["type"].casefold() or query in p["risk"].casefold()
-                   or query in p["path"].casefold()]
+        visible = [
+            p for p in self.packages
+            if (not query or any(query in str(p.get(key, "")).casefold()
+                                 for key in ("name", "type", "risk", "path", "category", "reason", "profile_source")))
+            and (risk_filter == "All risks" or p.get("risk") == risk_filter)
+        ]
         for package in visible:
             self.tree.insert("", "end", iid=package["name"],
                              values=(package["name"], package["type"], package["risk"], package["path"]))
         self.count_label.configure(text=f"{len(visible)} shown / {len(self.packages)} total")
+
+    def show_package_details(self, _event=None):
+        selected = self.tree.selection()
+        if not selected:
+            if _event is not None:
+                name = self.tree.identify_row(_event.y)
+                if name:
+                    selected = (name,)
+        if not selected:
+            return
+        name = selected[0]
+        package = next((item for item in self.packages if item["name"] == name), {"name": name})
+        sources = package.get("profile_sources") or ([package.get("profile_source")] if package.get("profile_source") else [])
+        source_text = ", ".join(sources) if sources else "No community profile matched"
+        recommended = "Yes — still review device-specific dependencies" if package.get("profile_recommended") else "No"
+        detail = (
+            f"Package: {package.get('name', name)}\\n"
+            f"Type: {package.get('type', 'Unknown')}\\n"
+            f"Risk guidance: {package.get('risk', 'UNKNOWN')}\\n"
+            f"Category: {package.get('category', 'Unknown')}\\n\\n"
+            f"Guidance: {package.get('reason', 'No package guidance available.')}\\n\\n"
+            f"Profile source: {source_text}\\n"
+            f"Community profile marks as a removal candidate: {recommended}\\n\\n"
+            f"APK path: {package.get('path', 'Unknown')}\\n\\n"
+            "Community ratings are informational, may not match your firmware version, and never guarantee safe removal."
+        )
+        messagebox.showinfo("Package details", detail, parent=self.parent)
 
     def select_visible(self):
         self.tree.selection_set(self.tree.get_children())
@@ -448,10 +573,17 @@ class DebloaterTab:
             messagebox.showwarning("No packages selected", "Select one or more packages first.")
             return
         if action in {"uninstall", "disable"}:
-            system_selected = [p for p in packages if next((x["type"] for x in self.packages if x["name"] == p), "") == "System"]
-            if system_selected and not self.advanced_var.get():
+            package_by_name = {item["name"]: item for item in self.packages}
+            system_selected = [p for p in packages if package_by_name.get(p, {}).get("type") == "System"]
+            high_risk_selected = [p for p in packages if package_by_name.get(p, {}).get("risk") == "HIGH RISK"]
+            if (system_selected or high_risk_selected) and not self.advanced_var.get():
+                reasons = []
+                if system_selected:
+                    reasons.append(f"{len(system_selected)} system package(s)")
+                if high_risk_selected:
+                    reasons.append(f"{len(high_risk_selected)} high-risk package(s)")
                 messagebox.showwarning("Advanced Mode required",
-                    "Your selection includes system packages. Review each package carefully and enable Advanced Mode only when you understand the consequences.")
+                    "Your selection includes " + " and ".join(reasons) + ". Review package details and enable Advanced Mode only if you accept the device-specific risk.")
                 return
             title = "Confirm package removal" if action == "uninstall" else "Confirm package disable"
             verb = "uninstall for Android user 0" if action == "uninstall" else "disable for Android user 0"
@@ -472,12 +604,13 @@ class DebloaterTab:
         if not binary:
             return
         self.busy = True
-        threading.Thread(target=self._action_worker, args=(binary, selected["serial"], action, packages), daemon=True).start()
+        threading.Thread(target=self._action_worker,
+            args=(binary, selected["serial"], action, packages, self.advanced_var.get()), daemon=True).start()
 
-    def _action_worker(self, binary, serial, action, packages):
+    def _action_worker(self, binary, serial, action, packages, allow_advanced=False):
         try:
             result = perform_package_action(binary, serial, action, packages, self.summary,
-                progress=lambda line: self._post("progress", line))
+                progress=lambda line: self._post("progress", line), allow_advanced=allow_advanced)
             self._post("action", result)
         except DebloaterError as exc:
             self._post("error", str(exc))
@@ -568,8 +701,10 @@ class DebloaterTab:
             action = payload["action"]
             succeeded = payload["succeeded"]
             failed = payload["failed"]
-            blocked = payload["blocked"]
-            detail = f"{action.title()} complete: {len(succeeded)} succeeded, {len(failed)} failed, {len(blocked)} core-protected."
+            blocked = payload.get("blocked", [])
+            blocked_advanced = payload.get("blocked_advanced", [])
+            detail = (f"{action.title()} complete: {len(succeeded)} succeeded, {len(failed)} failed, "
+                      f"{len(blocked)} core-protected, {len(blocked_advanced)} high-risk blocked by safety mode.")
             if payload.get("rescue_path"):
                 detail += f"\nRescue point: {payload['rescue_path']}"
             self.status_var.set(detail)
