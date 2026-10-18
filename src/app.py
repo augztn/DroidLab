@@ -102,7 +102,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
     def _report_callback_exception(self, exc_type, exc_value, exc_traceback):
         logging.error("Unhandled Tkinter callback exception", exc_info=(exc_type, exc_value, exc_traceback))
         try:
-            messagebox.showerror("DroidLab error", "An unexpected error occurred. Details were saved to the application log.\\n\\n" + str(self.log_path or _log_directory()), parent=self)
+            messagebox.showerror("DroidLab error", "An unexpected error occurred. Details were saved to the application log.\n\n" + str(self.log_path or _log_directory()), parent=self)
         except tk.TclError:
             pass
 
@@ -119,7 +119,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
             logging.info("Opened log directory")
         except (OSError, tk.TclError) as exc:
             logging.exception("Could not open log directory")
-            messagebox.showerror("Cannot open logs", "Log folder: " + str(directory) + "\\n\\n" + str(exc), parent=self)
+            messagebox.showerror("Cannot open logs", "Log folder: " + str(directory) + "\n\n" + str(exc), parent=self)
 
     def _save_diagnostic_report(self):
         path = filedialog.asksaveasfilename(parent=self, title="Save DroidLab diagnostic report", defaultextension=".txt", initialfile="droidlab-diagnostics.txt", filetypes=[("Text files", "*.txt"), ("All files", "*.*")])
@@ -128,13 +128,13 @@ class PayloadDumperApp(TkinterDnD.Tk):
         try:
             log_path = _log_directory() / "droidlab.log"
             with open(path, "w", encoding="utf-8") as report:
-                report.write("DroidLab diagnostic report\\n")
-                report.write("Platform: " + platform.platform() + "\\nPython: " + sys.version + "\\n")
-                report.write("Executable: " + sys.executable + "\\nFrozen build: " + str(bool(getattr(sys, "frozen", False))) + "\\n")
-                report.write("Log directory: " + str(_log_directory()) + "\\n\\n--- Application log (latest file) ---\\n")
-                report.write(log_path.read_text(encoding="utf-8", errors="replace") if log_path.is_file() else "No log file found.\\n")
+                report.write("DroidLab diagnostic report\n")
+                report.write("Platform: " + platform.platform() + "\nPython: " + sys.version + "\n")
+                report.write("Executable: " + sys.executable + "\nFrozen build: " + str(bool(getattr(sys, "frozen", False))) + "\n")
+                report.write("Log directory: " + str(_log_directory()) + "\n\n--- Application log (latest file) ---\n")
+                report.write(log_path.read_text(encoding="utf-8", errors="replace") if log_path.is_file() else "No log file found.\n")
             logging.info("Diagnostic report exported to %s", path)
-            messagebox.showinfo("Diagnostics saved", "Report saved to:\\n" + path, parent=self)
+            messagebox.showinfo("Diagnostics saved", "Report saved to:\n" + path, parent=self)
         except OSError:
             logging.exception("Could not export diagnostic report")
             messagebox.showerror("Export failed", "Could not write the diagnostic report. Check the destination and permissions.", parent=self)
@@ -515,7 +515,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.fastboot_console.configure(yscrollcommand=fast_console_scroll.set)
         fast_console_scroll.pack(side="right", fill="y")
         self.fastboot_console.pack(side="left", fill="both", expand=True)
-        self._console_write(self.fastboot_console, "[DroidLab] Fastboot console ready. Commands and activity will appear here.\\n")
+        self._console_write(self.fastboot_console, "[DroidLab] Fastboot console ready. Commands and activity will appear here.\n")
 
         self.flash_image.trace_add("write", lambda *_: self._on_flash_image_changed())
         self.flash_partition.trace_add("write", lambda *_: self._update_flash_preview())
@@ -533,11 +533,11 @@ class PayloadDumperApp(TkinterDnD.Tk):
             return
         command = [binary, "-s", serial] + list(args)
         rendered = " ".join(shlex.quote(part) for part in command)
-        if not messagebox.askyesno("Confirm reboot", "Execute this command on " + serial + "?\\n\\n" + rendered):
-            self._console_write(self.fastboot_console, "[DroidLab] Cancelled: " + rendered + "\\n")
+        if not messagebox.askyesno("Confirm reboot", "Execute this command on " + serial + "?\n\n" + rendered):
+            self._console_write(self.fastboot_console, "[DroidLab] Cancelled: " + rendered + "\n")
             return
         self._append("Executing Fastboot action: " + rendered)
-        self._console_write(self.fastboot_console, "[DroidLab] $ " + rendered + "\\n")
+        self._console_write(self.fastboot_console, "[DroidLab] $ " + rendered + "\n")
         self.status.set("Running Fastboot command…")
         threading.Thread(target=self._adb_task, args=(command, 90, "fastboot_manual"), daemon=True).start()
 
@@ -703,7 +703,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
             title = "ADB reboot"
         if not messagebox.askyesno("Confirm reboot", "Reboot " + serial + " into " + label + " mode?"):
             self._console_write(self.fastboot_console if is_fastboot else self.adb_console,
-                                "[DroidLab] Reboot cancelled by user.\\n")
+                                "[DroidLab] Reboot cancelled by user.\n")
             return
         # Use the same asynchronous streaming runner as manual commands so the
         # command, stdout/stderr, errors, and exit status appear in the live console.
@@ -755,7 +755,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
             logging.exception("Native ADB sideload ZIP picker failed")
             messagebox.showerror(
                 "Browse ZIP failed",
-                "Windows/Linux could not open the file picker. You can paste the full ZIP path into the package field.\\n\\n" + str(exc),
+                "Windows/Linux could not open the file picker. You can paste the full ZIP path into the package field.\n\n" + str(exc),
                 parent=self,
             )
             return
@@ -1209,7 +1209,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         message = str(msg)
         logging.log(logging.ERROR if message.startswith("ERROR:") else logging.INFO, "%s", message)
         self.log.configure(state="normal")
-        self.log.insert("end", message + "\\n")
+        self.log.insert("end", message + "\n")
         self.log.see("end")
         self.log.configure(state="disabled")
     def _busy(self,value):self.start_button.configure(state="disabled" if value else "normal"); self.cancel_button.configure(state="normal" if value else "disabled"); self.progress.start(12) if value else self.progress.stop()
