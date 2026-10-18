@@ -1019,19 +1019,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
             return
         self.maintenance_status.set("Running: " + label + "…")
         self._append("Executing Fastboot maintenance: " + rendered)
-        try:
-            result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900, check=False, **_windows_process_options())
-            output = (result.stdout + "\n" + result.stderr).strip()
-            self._append(output or ("Fastboot exit status: " + str(result.returncode)))
-            if result.returncode == 0:
-                self.maintenance_status.set("Completed: " + label)
-                messagebox.showinfo("Fastboot operation complete", label + " completed successfully.\n\n" + (output or "fastboot exit status 0"))
-            else:
-                self.maintenance_status.set("Failed: " + label)
-                messagebox.showerror("Fastboot operation failed", output or "fastboot exit status " + str(result.returncode))
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            self.maintenance_status.set("Failed: " + label)
-            messagebox.showerror("Fastboot operation failed", str(exc))
+        threading.Thread(target=self._adb_task, args=(command, 900, "fastboot_maintenance"), daemon=True).start()
 
     def _on_flash_image_changed(self):
         path = Path(self.flash_image.get().strip().strip(chr(34)).strip(chr(39)))
@@ -1066,12 +1054,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         detail = "Device: " + serial + "\nImage: " + str(image.resolve()) + "\nPartition: " + part + "\nCommand: " + " ".join(shlex.quote(x) for x in command) + "\n\nWrong or incompatible images can make the device unbootable. Verify this image is for this exact device and partition. Continue?"
         if not messagebox.askyesno("Confirm flashing", detail, icon="warning"): self._append("Flash cancelled before execution."); return
         self._append("Executing: " + " ".join(shlex.quote(x) for x in command)); self.status.set("Flashing image…"); self.update_idletasks()
-        try:
-            result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900, check=False, **_windows_process_options()); output = (result.stdout + "\n" + result.stderr).strip()
-            for line in output.splitlines(): self._append(line)
-            if result.returncode == 0: self.status.set("Fastboot flash completed"); messagebox.showinfo("Flash complete", "Fastboot reported success for " + part + ". Verify the device before rebooting.")
-            else: self.status.set("Fastboot failed"); messagebox.showerror("Flash failed", output or "fastboot exit status " + str(result.returncode))
-        except (OSError, subprocess.TimeoutExpired) as exc: self.status.set("Fastboot operation failed"); messagebox.showerror("Fastboot error", str(exc))
+        threading.Thread(target=self._adb_task, args=(command, 900, "fastboot_flash"), daemon=True).start()
     def _enable_drop(self, widget):
         """Allow files to be dropped onto the main window and source controls."""
         try:
@@ -1348,8 +1331,12 @@ class PayloadDumperApp(TkinterDnD.Tk):
                     self._append(("Fastboot " if kind_name=="fastboot_manual" else "ADB ")+kind_name+" result:\n"+output)
                     if kind_name in ("shell","fastboot_manual"):
                         self._append_adb_output(output)
-                        if kind_name=="fastboot_manual":
-                            self.status.set("Fastboot command finished (exit code %s)" % code)
+                    if kind_name.startswith("fastboot"):
+                        self.status.set("Fastboot operation finished (exit code %s)" % code)
+                        if kind_name == "fastboot_maintenance":
+                            self.maintenance_status.set("Completed" if code == 0 else "Failed")
+                        if kind_name == "fastboot_flash":
+                            self.status.set("Fastboot flash completed" if code == 0 else "Fastboot flash failed")
                     elif kind_name=="bugreport":
                         report_path=getattr(self,"_bugreport_target_path","")
                         if code==0 and report_path and Path(report_path).is_file():
