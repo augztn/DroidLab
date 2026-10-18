@@ -75,7 +75,11 @@ def load_package_profiles(profile_dir=None) -> dict[str, dict]:
             if not isinstance(package, str) or not isinstance(record, dict):
                 continue
             package = package.strip().lower()
-            if not re.fullmatch(r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+|android", package):
+            is_exact = bool(re.fullmatch(r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+|android", package))
+            is_prefix_pattern = package.endswith(".*") and bool(
+                re.fullmatch(r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+", package[:-2])
+            )
+            if not (is_exact or is_prefix_pattern):
                 continue
             risk = str(record.get("risk", "")).strip().lower()
             if risk not in _PROFILE_RISK_WEIGHT:
@@ -107,8 +111,23 @@ PACKAGE_PROFILES = load_package_profiles()
 
 
 def get_package_profile(package: str) -> dict:
-    """Return a copy of known community guidance, never an inferred safety guarantee."""
-    return dict(PACKAGE_PROFILES.get(package.strip().lower(), {}))
+    """Return the strictest exact/prefix guidance without inferring a safety guarantee."""
+    name = package.strip().lower()
+    exact = PACKAGE_PROFILES.get(name)
+    if exact:
+        return dict(exact)
+    matches = [
+        (pattern, record) for pattern, record in PACKAGE_PROFILES.items()
+        if pattern.endswith(".*") and name.startswith(pattern[:-1])
+    ]
+    if not matches:
+        return {}
+    matches.sort(key=lambda item: _PROFILE_RISK_WEIGHT.get(item[1].get("risk", ""), 0), reverse=True)
+    result = dict(matches[0][1])
+    sources = sorted({source for _, record in matches for source in record.get("sources", [])})
+    result["sources"] = sources
+    result["matched_pattern"] = matches[0][0]
+    return result
 
 
 class DebloaterError(RuntimeError):
