@@ -9,6 +9,19 @@ from pathlib import Path
 from payload_dumper import BackendError, extract, inspect_source, sha256_file
 from debloater import DebloaterTab
 
+def _windows_process_options():
+    """Keep ADB/Fastboot subprocesses from flashing console windows on Windows."""
+    if os.name != "nt":
+        return {}
+    startupinfo = subprocess.STARTUPINFO()
+    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startupinfo.wShowWindow = 0
+    return {
+        "creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        "startupinfo": startupinfo,
+    }
+
+
 APP_NAME = "DroidLab"  # Canonical product name.
 class PayloadDumperApp(TkinterDnD.Tk):
     def __init__(self):
@@ -199,7 +212,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         except tk.TclError:pass
         s.configure("TFrame",background="#111827"); s.configure("Panel.TFrame",background="#1f2937"); s.configure("TLabel",background="#111827",foreground="#e5e7eb",font=("Sans",13)); s.configure("Title.TLabel",font=("Sans",23,"bold"),foreground="#f9fafb"); s.configure("Muted.TLabel",foreground="#cbd5e1"); s.configure("TButton",padding=(14,10),font=("Sans",12)); s.configure("TCheckbutton",background="#1f2937",foreground="#f9fafb",font=("Sans",13)); s.configure("Large.TCheckbutton",background="#1f2937",foreground="#f9fafb",font=("Sans",15),padding=(2,5)); s.configure("Large.TButton",padding=(16,13),font=("Sans",14,"bold")); s.configure("TEntry",padding=7,font=("Sans",12)); s.configure("TCombobox",padding=7,font=("Sans",12)); s.configure("Treeview",background="#0b1220",fieldbackground="#0b1220",foreground="#f1f5f9",rowheight=38,font=("Sans",12)); s.configure("Treeview.Heading",background="#374151",foreground="#ffffff",font=("Sans",12,"bold"),padding=(9,9)); s.map("Treeview",background=[("selected","#1d4ed8")],foreground=[("selected","#ffffff")])
         notebook=ttk.Notebook(self); notebook.pack(fill="both",expand=True,padx=8,pady=8); root=ttk.Frame(notebook,padding=16); notebook.add(root,text="Payload Extractor"); flash_tab=ttk.Frame(notebook,padding=16); notebook.add(flash_tab,text="Fastboot & Flashing"); self._build_flash_tab(flash_tab); adb_tab=ttk.Frame(notebook,padding=16); notebook.add(adb_tab,text="ADB & Sideload"); self._build_adb_tab(adb_tab); debloat_tab=ttk.Frame(notebook,padding=16); notebook.add(debloat_tab,text="App Manager"); self.debloater=DebloaterTab(debloat_tab,self); h=ttk.Frame(root); h.pack(fill="x",pady=(0,10))
-        ttk.Label(h,text=APP_NAME,style="Title.TLabel").pack(anchor="w"); ttk.Label(h,text="Android firmware toolkit · Linux desktop",style="Muted.TLabel").pack(anchor="w",pady=(3,0))
+        ttk.Label(h,text=APP_NAME,style="Title.TLabel").pack(anchor="w"); ttk.Label(h,text="Android firmware toolkit · " + ("Windows desktop" if os.name == "nt" else "Linux desktop"),style="Muted.TLabel").pack(anchor="w",pady=(3,0))
         src=ttk.Frame(root,style="Panel.TFrame",padding=10); src.pack(fill="x",pady=(0,7)); ttk.Label(src,text="INPUT FILE PATH — TYPE OR PASTE THE FULL PATH",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(src,style="Panel.TFrame"); row.pack(fill="x",pady=(6,0)); self.source_entry=ttk.Entry(row,textvariable=self.source); self.source_entry.pack(side="left",fill="x",expand=True,ipady=4); self.source_entry.bind("<Return>",lambda _event:self._apply_manual_source_path()); ttk.Button(row,text="Browse…",command=self._browse_source).pack(side="left",padx=(7,0)); actions=ttk.Frame(src,style="Panel.TFrame"); actions.pack(fill="x",pady=(7,0)); ttk.Button(actions,text="Use typed path",command=self._apply_manual_source_path).pack(side="left"); ttk.Button(actions,text="Inspect partitions",command=self._inspect).pack(side="left",padx=(7,0))
         out=ttk.Frame(root,style="Panel.TFrame",padding=10); out.pack(fill="x",pady=(0,7)); ttk.Label(out,text="OUTPUT DIRECTORY",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(out,style="Panel.TFrame"); row.pack(fill="x",pady=(5,0)); ttk.Entry(row,textvariable=self.output).pack(side="left",fill="x",expand=True,ipady=4); ttk.Button(row,text="Choose…",command=self._browse_output).pack(side="left",padx=(7,0))
         # Compact mounted-drive controls share the output panel to save vertical space for partitions.
@@ -340,7 +353,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
     def _refresh_adb_devices(self):
         binary=self._tool_path("adb.exe" if os.name == "nt" else "adb") or self._tool_path("adb")
         if not binary: messagebox.showerror("ADB not found","Install Android SDK Platform-Tools and ensure adb is on PATH."); return
-        try: result=subprocess.run([binary,"devices","-l"],capture_output=True,text=True,timeout=10,check=False)
+        try: result=subprocess.run([binary,"devices","-l"],capture_output=True,text=True,encoding="utf-8",errors="replace",timeout=10,check=False,**_windows_process_options())
         except (OSError,subprocess.TimeoutExpired) as exc: messagebox.showerror("ADB scan failed",str(exc)); return
         targets={}
         for line in result.stdout.splitlines()[1:]:
@@ -367,7 +380,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         binary,serial=selected; label=mode or "normal"; command=[binary,"-s",serial,"reboot"]+([mode] if mode else [])
         if not messagebox.askyesno("Confirm reboot","Reboot "+serial+" into "+label+" mode?"):return
         try:
-            result=subprocess.run(command,capture_output=True,text=True,timeout=20,check=False); output=(result.stdout+"\n"+result.stderr).strip()
+            result=subprocess.run(command,capture_output=True,text=True,encoding="utf-8",errors="replace",timeout=20,check=False,**_windows_process_options()); output=(result.stdout+"\n"+result.stderr).strip()
             self._append("ADB reboot "+label+": "+(output or "exit status "+str(result.returncode)))
             if result.returncode:messagebox.showerror("ADB reboot failed",output or "adb exit status "+str(result.returncode))
             else:self.adb_device_status.set("Reboot command sent. Refresh after the device changes mode.")
@@ -537,7 +550,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
 
     def _adb_task(self, command, timeout, kind):
         try:
-            result=subprocess.run(command,capture_output=True,text=True,timeout=timeout,check=False)
+            result=subprocess.run(command,capture_output=True,text=True,encoding="utf-8",errors="replace",timeout=timeout,check=False,**_windows_process_options())
             output=(result.stdout+"\n"+result.stderr).strip() or "Exit status: "+str(result.returncode)
             self.events.put(("adb_result",(kind,result.returncode,output)))
         except (OSError,subprocess.TimeoutExpired) as exc:self.events.put(("adb_result",(kind,-1,str(exc))))
@@ -571,7 +584,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.adb_log_window,self.adb_log_text=window,text
         self.adb_log_lines=[]; self.adb_log_paused=False
         self.adb_log_filter.trace_add("write",lambda *_:self._render_adb_logcat())
-        try:self.adb_log_process=subprocess.Popen([binary,"-s",serial,"logcat"],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,bufsize=1)
+        try:self.adb_log_process=subprocess.Popen([binary,"-s",serial,"logcat"],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,encoding="utf-8",errors="replace",bufsize=1,**_windows_process_options())
         except OSError as exc:window.destroy(); self.adb_log_window=self.adb_log_text=None; messagebox.showerror("Logcat failed",str(exc)); return
         buttons=ttk.Frame(window); buttons.pack(fill="x",padx=8,pady=(0,8))
         self.adb_log_pause_button=ttk.Button(buttons,text="Pause display",command=self._toggle_adb_logcat_pause); self.adb_log_pause_button.pack(side="left")
@@ -627,7 +640,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         process=None
         try:
             with open(path,"w",encoding="utf-8") as output:
-                process=subprocess.Popen([binary,"-s",serial,"logcat"],stdout=output,stderr=subprocess.PIPE,text=True)
+                process=subprocess.Popen([binary,"-s",serial,"logcat"],stdout=output,stderr=subprocess.PIPE,text=True,encoding="utf-8",errors="replace",**_windows_process_options())
                 try:
                     _stdout,stderr=process.communicate(timeout=3600)
                     self.events.put(("adb_result",("logcat_file",process.returncode,"Saved logcat to "+path+(("\n"+stderr.strip()) if stderr and stderr.strip() else ""))))
@@ -678,7 +691,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.maintenance_status.set("Running: " + label + "…")
         self._append("Executing Fastboot maintenance: " + rendered)
         try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=900, check=False)
+            result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900, check=False, **_windows_process_options())
             output = (result.stdout + "\n" + result.stderr).strip()
             self._append(output or ("Fastboot exit status: " + str(result.returncode)))
             if result.returncode == 0:
@@ -704,7 +717,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
     def _refresh_fastboot_devices(self):
         binary = self._tool_path("fastboot.exe" if os.name == "nt" else "fastboot") or self._tool_path("fastboot")
         if not binary: messagebox.showerror("Fastboot not found", "Install Android platform-tools and ensure fastboot is on PATH."); return
-        try: result = subprocess.run([binary, "devices", "-l"], capture_output=True, text=True, timeout=8, check=False)
+        try: result = subprocess.run([binary, "devices", "-l"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=8, check=False, **_windows_process_options())
         except (OSError, subprocess.TimeoutExpired) as exc: messagebox.showerror("Device detection failed", str(exc)); return
         devices = [line.split()[0] for line in result.stdout.splitlines() if len(line.split()) >= 2 and line.split()[1] == "fastboot"]
         self.device_combo["values"] = devices; self.fastboot_device.set(devices[0] if len(devices) == 1 else "")
@@ -725,7 +738,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         if not messagebox.askyesno("Confirm flashing", detail, icon="warning"): self._append("Flash cancelled before execution."); return
         self._append("Executing: " + " ".join(shlex.quote(x) for x in command)); self.status.set("Flashing image…"); self.update_idletasks()
         try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=900, check=False); output = (result.stdout + "\n" + result.stderr).strip()
+            result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900, check=False, **_windows_process_options()); output = (result.stdout + "\n" + result.stderr).strip()
             for line in output.splitlines(): self._append(line)
             if result.returncode == 0: self.status.set("Fastboot flash completed"); messagebox.showinfo("Flash complete", "Fastboot reported success for " + part + ". Verify the device before rebooting.")
             else: self.status.set("Fastboot failed"); messagebox.showerror("Flash failed", output or "fastboot exit status " + str(result.returncode))
