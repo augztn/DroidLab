@@ -78,7 +78,6 @@ def extract(source: str, output_dir: str, selected: list[str] | None = None,
     except OSError as exc: raise BackendError(f"Could not start payload-dumper-go: {exc}") from exc
     assert proc.stdout is not None
     finished = threading.Event()
-    watcher = None
     if cancel_event is not None:
         def watch_cancel():
             while not finished.wait(0.1):
@@ -86,8 +85,7 @@ def extract(source: str, output_dir: str, selected: list[str] | None = None,
                     if proc.poll() is None:
                         proc.terminate()
                     return
-        watcher = threading.Thread(target=watch_cancel, daemon=True)
-        watcher.start()
+        threading.Thread(target=watch_cancel, daemon=True).start()
     try:
         while True:
             if cancel_event is not None and cancel_event.is_set():
