@@ -418,8 +418,8 @@ class PayloadDumperApp(TkinterDnD.Tk):
 
         # Advanced manual Fastboot console. Commands execute on the host using the
         # bundled/PATH fastboot binary, not inside Android's device shell.
-        manual = ttk.Frame(tab, style="Panel.TFrame", padding=12)
-        manual.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        manual = ttk.Frame(reference, style="Panel.TFrame", padding=10)
+        manual.pack(fill="x", pady=(12, 0))
         ttk.Label(manual, text="ADVANCED FASTBOOT COMMAND", background="#1f2937",
                   foreground="#93c5fd", font=("Sans", 11, "bold")).pack(anchor="w")
         ttk.Label(manual, text="Enter commands such as fastboot getvar all or fastboot reboot. Drag an image/file into the command field to insert its path. Destructive commands require confirmation.",
