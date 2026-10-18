@@ -416,6 +416,16 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.maintenance_status = tk.StringVar(value="No maintenance command executed.")
         ttk.Label(reference, textvariable=self.maintenance_status, background="#1f2937", foreground="#cbd5e1", wraplength=520, justify="left", font=("Sans", 10)).pack(anchor="w", pady=(10, 0))
 
+        ttk.Label(reference, text="REAL-TIME CONSOLE / ACTIVITY", background="#1f2937", foreground="#93c5fd", font=("Sans", 11, "bold")).pack(anchor="w", pady=(12, 5))
+        fast_console_frame = ttk.Frame(reference, style="Panel.TFrame")
+        fast_console_frame.pack(fill="both", expand=True)
+        self.fastboot_console = tk.Text(fast_console_frame, height=8, bg="#0b1220", fg="#d1d5db", insertbackground="white", relief="flat", wrap="word", font=(self._mono_font, 9), state="disabled")
+        fast_console_scroll = ttk.Scrollbar(fast_console_frame, orient="vertical", command=self.fastboot_console.yview)
+        self.fastboot_console.configure(yscrollcommand=fast_console_scroll.set)
+        fast_console_scroll.pack(side="right", fill="y")
+        self.fastboot_console.pack(side="left", fill="both", expand=True)
+        self._console_write(self.fastboot_console, "[DroidLab] Fastboot output will appear here in real time.\n")
+
         # Advanced manual Fastboot console. Commands execute on the host using the
         # bundled/PATH fastboot binary, not inside Android's device shell.
         manual = ttk.Frame(reference, style="Panel.TFrame", padding=10)
@@ -450,7 +460,14 @@ class PayloadDumperApp(TkinterDnD.Tk):
         ttk.Button(row,text="Refresh devices",command=self._refresh_adb_devices).pack(side="left",padx=(8,0))
         self.adb_device_status=tk.StringVar(value="Connect device or enter recovery sideload mode, then refresh.")
         ttk.Label(device,textvariable=self.adb_device_status,background="#1f2937",foreground="#cbd5e1",wraplength=1000).pack(anchor="w",pady=(5,0))
-        lower=ttk.Frame(tab); lower.grid(row=3,column=0,sticky="nsew"); lower.columnconfigure(0,weight=1); lower.rowconfigure(2,weight=1)
+        # Two-column workspace keeps controls visible beside the live console.
+        workspace=ttk.Frame(tab); workspace.grid(row=3,column=0,sticky="nsew"); workspace.columnconfigure(0,weight=3,uniform="adb_workspace"); workspace.columnconfigure(1,weight=2,uniform="adb_workspace"); workspace.rowconfigure(0,weight=1)
+        lower=ttk.Frame(workspace); lower.grid(row=0,column=0,sticky="nsew",padx=(0,10)); lower.columnconfigure(0,weight=1); lower.rowconfigure(2,weight=1)
+        adb_console_panel=ttk.Frame(workspace,style="Panel.TFrame",padding=10); adb_console_panel.grid(row=0,column=1,sticky="nsew"); adb_console_panel.rowconfigure(1,weight=1); adb_console_panel.columnconfigure(0,weight=1)
+        ttk.Label(adb_console_panel,text="REAL-TIME CONSOLE / ACTIVITY",background="#1f2937",foreground="#93c5fd",font=("Sans",12,"bold")).grid(row=0,column=0,sticky="w",pady=(0,6))
+        self.adb_console=tk.Text(adb_console_panel,bg="#0b1220",fg="#d1d5db",insertbackground="white",relief="flat",wrap="word",font=(self._mono_font,9),state="disabled")
+        adb_console_scroll=ttk.Scrollbar(adb_console_panel,orient="vertical",command=self.adb_console.yview); adb_console_scroll.grid(row=1,column=1,sticky="ns"); self.adb_console.configure(yscrollcommand=adb_console_scroll.set); self.adb_console.grid(row=1,column=0,sticky="nsew")
+        self._console_write(self.adb_console,"[DroidLab] ADB command output will appear here in real time.\n")
         actions=ttk.Frame(lower); actions.grid(row=0,column=0,sticky="ew",pady=(0,10))
         power=ttk.Frame(actions,style="Panel.TFrame",padding=10); power.pack(side="left",fill="both",expand=True,padx=(0,8))
         ttk.Label(power,text="POWER & REBOOTING",background="#1f2937",foreground="#93c5fd").pack(anchor="w",pady=(0,6))
@@ -691,12 +708,52 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self._append("Starting ADB sideload: "+" ".join(shlex.quote(x) for x in command)); self.adb_device_status.set("Sideload in progress…")
         threading.Thread(target=self._adb_task,args=(command,1800,"sideload"),daemon=True).start()
 
-    def _adb_task(self, command, timeout, kind):
+    def _console_write(self, widget, text):
+        """Append text to a console widget from the Tk/UI thread only."""
+        if not widget or not widget.winfo_exists():
+            return
+        widget.configure(state="normal")
+        widget.insert("end", str(text))
+        line_count = int(widget.index("end-1c").split(".")[0])
+        if line_count > 5000:
+            widget.delete("1.0", f"{line_count - 5000}.0")
+        widget.see("end")
+        widget.configure(state="disabled")
+
+    def _stream_process(self, command, timeout, kind):
+        """Run host commands and forward merged stdout/stderr to a live console."""
+        import time
+        self.events.put(("console_line", (kind, "[DroidLab] $ " + subprocess.list2cmdline(command) + "\n")))
+        process = None
+        output_lines = []
         try:
-            result=subprocess.run(command,capture_output=True,text=True,encoding="utf-8",errors="replace",timeout=timeout,check=False,**_windows_process_options())
-            output=(result.stdout+"\n"+result.stderr).strip() or "Exit status: "+str(result.returncode)
-            self.events.put(("adb_result",(kind,result.returncode,output)))
-        except (OSError,subprocess.TimeoutExpired) as exc:self.events.put(("adb_result",(kind,-1,str(exc))))
+            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                       stdin=subprocess.DEVNULL, text=True, encoding="utf-8",
+                                       errors="replace", bufsize=1, **_windows_process_options())
+            deadline = time.monotonic() + timeout
+            while True:
+                line = process.stdout.readline()
+                if line:
+                    output_lines.append(line)
+                    self.events.put(("console_line", (kind, line)))
+                elif process.poll() is not None:
+                    break
+                elif time.monotonic() >= deadline:
+                    process.kill()
+                    raise subprocess.TimeoutExpired(command, timeout)
+            code = process.wait()
+            output = "".join(output_lines).strip() or "Exit status: " + str(code)
+            self.events.put(("adb_result", (kind, code, output)))
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            if process and process.poll() is None:
+                process.kill()
+                process.wait()
+            message = str(exc)
+            self.events.put(("console_line", (kind, "[DroidLab] ERROR: " + message + "\n")))
+            self.events.put(("adb_result", (kind, -1, message)))
+
+    def _adb_task(self, command, timeout, kind):
+        self._stream_process(command, timeout, kind)
 
     def _run_adb_shell(self):
         text = self.adb_shell_command.get().strip()
@@ -1277,6 +1334,10 @@ class PayloadDumperApp(TkinterDnD.Tk):
                         self.adb_log_lines.append(payload)
                         if len(self.adb_log_lines)>10000: del self.adb_log_lines[:len(self.adb_log_lines)-10000]
                         logcat_changed = True
+                elif kind=="console_line":
+                    kind_name, line = payload
+                    target = self.fastboot_console if kind_name.startswith("fastboot") else self.adb_console
+                    self._console_write(target, line)
                 elif kind=="adb_log_end":
                     logging.info("Live logcat reader ended; process return code: %s", payload)
                     if self.adb_log_window and self.adb_log_window.winfo_exists():
