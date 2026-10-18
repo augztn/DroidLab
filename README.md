@@ -12,11 +12,9 @@ DroidLab is a desktop Android firmware toolkit for inspecting and extracting OTA
 - Fastboot & Flashing tab: drag/drop `.img` files, filename-based partition suggestions, Fastboot device detection, command preview, and explicit confirmation before flashing.
 - ADB & Sideload tab: detect ADB device states; reboot normally, to bootloader, or recovery; view live `adb logcat`; save logcat to a text file; generate a bugreport ZIP; run trusted `adb shell` diagnostics such as `dumpsys battery`; and sideload OTA ZIPs while the device is in recovery's “Apply update from ADB” mode.
 - ADB & Sideload tab: discover authorized and recovery-mode devices, reboot, view/filter/pause live `adb logcat`, save logs, create and verify bugreport ZIPs, run shell diagnostics, and sideload compatible ZIP packages.
-- App Manager tab: scan installed packages, inspect community risk reasons, filter by risk, disable/uninstall for Android user 0, enable/restore, and import/export selections. Destructive actions require confirmation; rescue files store package names only, not APKs or user data.
-- Windows bundles include Google's ADB/Fastboot when the platform-tools build is available. The app prefers the bundled tools and falls back to `PATH`; Windows subprocesses are launched without console-window flashes. Linux builds use installed ADB/Fastboot from `PATH`.
-- Community safety profiles for Android/AOSP/Google, Samsung, Realme/Oppo, and Xiaomi are bundled offline. They are guidance, not guarantees, and unknown packages remain unknown. The data source and MIT license are listed in `resources/safety-db/NOTICE.md`.
-- The app requires explicit confirmation before rebooting, flashing, sideloading, generating a bugreport, or changing packages. Bugreports can contain sensitive device data; removing packages can break device features.
-- AppImage build script packages the GUI, the `payload-dumper-go` backend, and the offline package profiles.
+- Windows bundles include Google's ADB/Fastboot when the platform-tools build is available. The app prefers the bundled tools and falls back to `PATH`; Linux builds use installed ADB/Fastboot from `PATH`.
+- The app requires explicit confirmation before rebooting, flashing, sideloading, or collecting a bugreport. Bugreports may contain sensitive device data.
+- AppImage build script packages the GUI plus the `payload-dumper-go` backend.
 
 ## Windows build
 
