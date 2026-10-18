@@ -49,7 +49,7 @@ class DebloaterParsingTests(unittest.TestCase):
         self.assertEqual(classify_package("com.example.app", "User")[0], "USER APP")
 
     def test_community_profiles_add_guidance_without_trusting_unknowns(self):
-        self.assertIn("com.samsung.android.systemui", get_package_profile("com.samsung.android.systemui"))
+        self.assertEqual(get_package_profile("com.samsung.android.systemui").get("risk"), "high")
         self.assertEqual(classify_package("com.samsung.android.systemui", "System")[0], "HIGH RISK")
         self.assertEqual(classify_package("com.example.notlisted", "System")[0], "UNKNOWN")
         self.assertEqual(classify_package("com.android.systemui", "System")[0], "PROTECTED")
