@@ -111,6 +111,23 @@ class PayloadDumperApp(TkinterDnD.Tk):
                       foreground="#e5e7eb", font=("Sans", 11),
                       wraplength=500, justify="left").pack(anchor="w", pady=(7, 0))
 
+        tech = ttk.Frame(content_frame, style="Panel.TFrame", padding=16)
+        tech.pack(fill="x", pady=(10, 0))
+        ttk.Label(tech, text="TOOLS & TECHNOLOGY", background="#1f2937",
+                  foreground="#93c5fd", font=("Sans", 10, "bold")).pack(anchor="w")
+        for label, value in (
+            ("Desktop UI", "Python · Tkinter"),
+            ("Payload backend", "payload-dumper-go"),
+            ("Device tools", "Android SDK Platform-Tools · ADB & Fastboot"),
+        ):
+            line = ttk.Frame(tech, style="Panel.TFrame")
+            line.pack(fill="x", pady=(7, 0))
+            ttk.Label(line, text=label, background="#1f2937",
+                      foreground="#9ca3af", font=("Sans", 10)).pack(anchor="w")
+            ttk.Label(line, text=value, background="#1f2937",
+                      foreground="#e5e7eb", font=("Sans", 11),
+                      wraplength=500, justify="left").pack(anchor="w", pady=(2, 0))
+
         details = ttk.Frame(content_frame, style="Panel.TFrame", padding=16)
         details.pack(fill="x", pady=(10, 0))
         ttk.Label(details, text="CREATED BY", background="#1f2937",
