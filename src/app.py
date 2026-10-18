@@ -634,7 +634,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
     def _save_visible_adb_logcat(self):
         needle=self.adb_log_filter.get().casefold().strip()
         visible=[line for line in self.adb_log_lines if not needle or needle in line.casefold()]
-        path=filedialog.asksaveasfilename(title="Save filtered logcat",defaultextension=".txt",initialfile="logcat-filtered.txt",filetypes=[("Text files","*.txt"),("All files","*")])
+        path=filedialog.asksaveasfilename(parent=self, title="Save filtered logcat",defaultextension=".txt",initialfile="logcat-filtered.txt",filetypes=[("Text files","*.txt"),("All files","*.*")])
         if not path:return
         try:
             with open(path,"w",encoding="utf-8") as output: output.write("\n".join(visible)+("\n" if visible else ""))
@@ -651,7 +651,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
     def _save_adb_logcat(self):
         selected=self._adb_require(("device",))
         if not selected:return
-        path=filedialog.asksaveasfilename(title="Save Android logcat",defaultextension=".txt",initialfile="logs.txt",filetypes=[("Text files","*.txt"),("All files","*")])
+        path=filedialog.asksaveasfilename(parent=self, title="Save Android logcat",defaultextension=".txt",initialfile="logs.txt",filetypes=[("Text files","*.txt"),("All files","*.*")])
         if not path:return
         binary,serial=selected
         self._append("Starting logcat capture to " + path)
@@ -676,7 +676,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
     def _create_adb_bugreport(self):
         selected=self._adb_require(("device",))
         if not selected:return
-        path=filedialog.asksaveasfilename(title="Save Android bugreport",defaultextension=".zip",initialfile="bugreport.zip",filetypes=[("ZIP archive","*.zip"),("All files","*")])
+        path=filedialog.asksaveasfilename(parent=self, title="Save Android bugreport",defaultextension=".zip",initialfile="bugreport.zip",filetypes=[("ZIP archive","*.zip"),("All files","*.*")])
         if not path:return
         binary,serial=selected
         if not messagebox.askyesno("Create bugreport","The report may include device identifiers, logs, and app activity.\nSave diagnostics from "+serial+" to:\n"+path+"?",icon="warning"):return
@@ -732,7 +732,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self._update_flash_preview()
 
     def _browse_flash_image(self):
-        path = filedialog.askopenfilename(title="Choose image to flash", filetypes=[("Android image", "*.img"), ("All files", "*")])
+        path = filedialog.askopenfilename(parent=self, title="Choose image to flash", initialdir=str(Path.home()), filetypes=[("Android image", "*.img"), ("All files", "*.*")])
         if path: self.flash_image.set(path)
 
     def _refresh_fastboot_devices(self):
