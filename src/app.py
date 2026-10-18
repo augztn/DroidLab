@@ -25,11 +25,8 @@ def _windows_process_options():
 APP_NAME = "DroidLab"  # Canonical product name.
 
 def _log_directory():
-    if os.name == "nt":
-        base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
-    else:
-        base = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state")
-    return base / APP_NAME / "logs"
+    """Keep logs in a clearly visible DroidLab folder inside the user's home directory."""
+    return Path.home() / "DroidLab" / "logs"
 
 def _configure_logging():
     directory = _log_directory()
