@@ -955,9 +955,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         try:
             while True:
                 kind,payload=self.events.get_nowait()
-                if kind.startswith("debloat_"):
-                    self.debloater.handle_event(kind,payload)
-                elif kind=="log":self._append(payload)
+                if kind=="log":self._append(payload)
                 elif kind=="adb_log_line":
                     if self.adb_log_text and self.adb_log_window and self.adb_log_window.winfo_exists():
                         self.adb_log_lines.append(payload)
