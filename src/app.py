@@ -35,43 +35,89 @@ class PayloadDumperApp(TkinterDnD.Tk):
         return shutil.which(name)
 
     def _show_about(self):
-        """Show a polished, readable About dialog with working project links."""
+        """Show a responsive, scrollable About dialog."""
         dialog = tk.Toplevel(self)
         dialog.title("About DroidLab")
-        dialog.geometry("560x470")
-        dialog.minsize(520, 440)
-        dialog.resizable(True, True)
-        dialog.transient(self)
         dialog.configure(bg="#111827")
-        dialog.grab_set()
+        dialog.transient(self)
+        dialog.resizable(True, True)
 
-        # Center the dialog over the main window without relying on a fixed screen size.
         self.update_idletasks()
-        x = self.winfo_rootx() + max(0, (self.winfo_width() - 560) // 2)
-        y = self.winfo_rooty() + max(0, (self.winfo_height() - 470) // 2)
-        dialog.geometry(f"+{x}+{y}")
+        width = min(620, max(440, self.winfo_screenwidth() - 80))
+        height = min(680, max(420, self.winfo_screenheight() - 100))
+        x = self.winfo_rootx() + max(0, (self.winfo_width() - width) // 2)
+        y = self.winfo_rooty() + max(0, (self.winfo_height() - height) // 2)
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+        dialog.minsize(min(420, width), min(360, height))
 
-        shell = ttk.Frame(dialog, padding=22)
-        shell.pack(fill="both", expand=True)
-        hero = tk.Frame(shell, bg="#1d4ed8", padx=18, pady=18)
+        # Keep the title and close action fixed; scroll the complete content area.
+        outer = ttk.Frame(dialog, padding=(14, 12))
+        outer.pack(fill="both", expand=True)
+        header = ttk.Frame(outer)
+        header.pack(fill="x", pady=(0, 10))
+        ttk.Label(header, text="About DroidLab", font=("Sans", 14, "bold")).pack(side="left")
+        ttk.Button(header, text="Close", command=dialog.destroy).pack(side="right")
+
+        body = ttk.Frame(outer)
+        body.pack(fill="both", expand=True)
+        canvas = tk.Canvas(body, bg="#111827", highlightthickness=0, borderwidth=0)
+        scrollbar = ttk.Scrollbar(body, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        content_frame = ttk.Frame(canvas, padding=(2, 2, 10, 14))
+        content_window = canvas.create_window((0, 0), window=content_frame, anchor="nw")
+
+        def update_scroll_region(_event=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        def fit_content_width(event):
+            canvas.itemconfigure(content_window, width=event.width)
+
+        content_frame.bind("<Configure>", update_scroll_region)
+        canvas.bind("<Configure>", fit_content_width)
+
+        hero = tk.Frame(content_frame, bg="#1d4ed8", padx=18, pady=22)
         hero.pack(fill="x")
         tk.Label(hero, text="DL", bg="#1d4ed8", fg="#ffffff",
-                 font=("Sans", 18, "bold"), width=3, height=1).pack(pady=(0, 8))
+                 font=("Sans", 18, "bold")).pack(pady=(0, 6))
         tk.Label(hero, text="DroidLab", bg="#1d4ed8", fg="#ffffff",
                  font=("Sans", 25, "bold")).pack()
         tk.Label(hero, text="Android firmware toolkit", bg="#1d4ed8", fg="#dbeafe",
                  font=("Sans", 12)).pack(pady=(5, 0))
 
-        ttk.Label(shell, text="Inspect payloads. Work with ADB. Manage Fastboot tasks.",
-                  style="Muted.TLabel", wraplength=480, justify="center").pack(
-                      fill="x", pady=(16, 14))
-        details = ttk.Frame(shell, style="Panel.TFrame", padding=14)
-        details.pack(fill="x")
+        intro = ttk.Frame(content_frame, style="Panel.TFrame", padding=16)
+        intro.pack(fill="x", pady=(12, 0))
+        ttk.Label(intro, text="A toolkit for Android firmware workflows",
+                  background="#1f2937", foreground="#f9fafb",
+                  font=("Sans", 13, "bold"), wraplength=500).pack(anchor="w")
+        ttk.Label(intro,
+                  text="Inspect and extract OTA payloads, review partition images, manage connected devices with ADB, and preview guarded Fastboot operations.",
+                  background="#1f2937", foreground="#cbd5e1",
+                  font=("Sans", 11), wraplength=500, justify="left").pack(
+                      anchor="w", fill="x", pady=(7, 0))
+
+        features = ttk.Frame(content_frame, style="Panel.TFrame", padding=16)
+        features.pack(fill="x", pady=(10, 0))
+        ttk.Label(features, text="WHAT YOU CAN DO", background="#1f2937",
+                  foreground="#93c5fd", font=("Sans", 10, "bold")).pack(anchor="w")
+        for item in (
+            "Extract all or selected partitions from OTA payloads",
+            "Generate optional SHA-256 fingerprints",
+            "Inspect images and preview Fastboot commands",
+            "Reboot, collect logs, run diagnostics, and sideload OTA ZIPs",
+        ):
+            ttk.Label(features, text="•  " + item, background="#1f2937",
+                      foreground="#e5e7eb", font=("Sans", 11),
+                      wraplength=500, justify="left").pack(anchor="w", pady=(7, 0))
+
+        details = ttk.Frame(content_frame, style="Panel.TFrame", padding=16)
+        details.pack(fill="x", pady=(10, 0))
         ttk.Label(details, text="CREATED BY", background="#1f2937",
                   foreground="#93c5fd", font=("Sans", 9, "bold")).pack(anchor="w")
         ttk.Label(details, text="nightx24 (augztn)", background="#1f2937",
                   foreground="#f9fafb", font=("Sans", 15, "bold")).pack(
-                      anchor="w", pady=(3, 10))
+                      anchor="w", pady=(4, 10))
         links = ttk.Frame(details, style="Panel.TFrame")
         links.pack(fill="x")
         instagram = ttk.Label(links, text="Instagram  ↗", background="#1f2937",
@@ -85,11 +131,22 @@ class PayloadDumperApp(TkinterDnD.Tk):
         github.pack(side="left")
         github.bind("<Button-1>", lambda _event: webbrowser.open("https://github.com/nightx24"))
 
-        footer = ttk.Frame(shell)
-        footer.pack(fill="x", pady=(16, 0))
-        ttk.Label(footer, text="DroidLab · Community firmware utility",
-                  style="Muted.TLabel").pack(side="left", fill="x", expand=True)
-        ttk.Button(footer, text="Close", command=dialog.destroy).pack(side="right")
+        ttk.Label(content_frame, text="DroidLab · Community firmware utility",
+                  style="Muted.TLabel", font=("Sans", 10)).pack(
+                      anchor="center", pady=(14, 4))
+
+        # Scroll with the mouse wheel while the pointer is over the dialog.
+        def on_mousewheel(event):
+            if getattr(event, "delta", 0):
+                canvas.yview_scroll(int(-event.delta / 120), "units")
+            elif getattr(event, "num", None) == 4:
+                canvas.yview_scroll(-1, "units")
+            elif getattr(event, "num", None) == 5:
+                canvas.yview_scroll(1, "units")
+        canvas.bind("<MouseWheel>", on_mousewheel)
+        canvas.bind("<Button-4>", on_mousewheel)
+        canvas.bind("<Button-5>", on_mousewheel)
+        dialog.grab_set()
 
     def _build(self):
         s=ttk.Style(self)
