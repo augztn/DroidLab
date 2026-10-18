@@ -2,7 +2,8 @@
 """Cross-platform DroidLab desktop UI for Android firmware workflows."""
 from __future__ import annotations
 import os, queue, threading, tkinter as tk, shutil, re, shlex, sys
-import subprocess, webbrowser
+import subprocess, webbrowser, logging, platform
+from logging.handlers import RotatingFileHandler
 from tkinter import filedialog, messagebox, ttk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from pathlib import Path
@@ -22,9 +23,42 @@ def _windows_process_options():
 
 
 APP_NAME = "DroidLab"  # Canonical product name.
+
+def _log_directory():
+    if os.name == "nt":
+        base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
+    else:
+        base = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state")
+    return base / APP_NAME / "logs"
+
+def _configure_logging():
+    directory = _log_directory()
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        handler = RotatingFileHandler(directory / "droidlab.log", maxBytes=2 * 1024 * 1024, backupCount=4, encoding="utf-8")
+        handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(threadName)s | %(name)s | %(message)s"))
+        logger = logging.getLogger()
+        logger.setLevel(logging.INFO)
+        logger.addHandler(handler)
+        logging.info("==== %s starting ====", APP_NAME)
+        logging.info("Platform: %s | Python: %s | frozen: %s", platform.platform(), sys.version.replace("\n", " "), bool(getattr(sys, "frozen", False)))
+        return directory / "droidlab.log"
+    except OSError:
+        logging.basicConfig(level=logging.INFO)
+        logging.exception("Could not initialize file logging at %s", directory)
+        return None
+
+def _log_uncaught_exception(exc_type, exc_value, exc_traceback):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    logging.critical("Uncaught application exception", exc_info=(exc_type, exc_value, exc_traceback))
+
 class PayloadDumperApp(TkinterDnD.Tk):
     def __init__(self):
         super().__init__()
+        self.log_path = _configure_logging()
+        sys.excepthook = _log_uncaught_exception
         self.title(APP_NAME)
         # Use a practical Windows-first size; ttk layouts and system fonts scale
         # more predictably than the oversized Linux-oriented defaults.
@@ -36,11 +70,57 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.events=queue.Queue(); self.worker=None; self.cancel_event=threading.Event()
         menu=tk.Menu(self)
         help_menu=tk.Menu(menu, tearoff=False)
+        help_menu.add_command(label="Debug Tools / Open Logs", command=self._open_log_folder)
+        help_menu.add_command(label="Save Diagnostic Report…", command=self._save_diagnostic_report)
+        help_menu.add_separator()
         help_menu.add_command(label="About DroidLab", command=self._show_about)
         menu.add_cascade(label="Help", menu=help_menu)
         self.configure(menu=menu)
         self.source=tk.StringVar(); self.output=tk.StringVar(value=str(Path.home()/APP_NAME)); self.fingerprint=tk.BooleanVar(value=True); self.status=tk.StringVar(value="Ready")
-        self.parts={}; self.part_vars={}; self._build(); self.after(100,self._poll_events)
+        self.parts={}; self.part_vars={}; self._build()
+        self.report_callback_exception = self._report_callback_exception
+        logging.info("UI initialized")
+        self.after(100,self._poll_events)
+    def _report_callback_exception(self, exc_type, exc_value, exc_traceback):
+        logging.error("Unhandled Tkinter callback exception", exc_info=(exc_type, exc_value, exc_traceback))
+        try:
+            messagebox.showerror("DroidLab error", "An unexpected error occurred. Details were saved to the application log.\\n\\n" + str(self.log_path or _log_directory()), parent=self)
+        except tk.TclError:
+            pass
+
+    def _open_log_folder(self):
+        directory = _log_directory()
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            if os.name == "nt":
+                os.startfile(str(directory))
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(directory)])
+            else:
+                subprocess.Popen(["xdg-open", str(directory)])
+            logging.info("Opened log directory")
+        except (OSError, tk.TclError) as exc:
+            logging.exception("Could not open log directory")
+            messagebox.showerror("Cannot open logs", "Log folder: " + str(directory) + "\\n\\n" + str(exc), parent=self)
+
+    def _save_diagnostic_report(self):
+        path = filedialog.asksaveasfilename(parent=self, title="Save DroidLab diagnostic report", defaultextension=".txt", initialfile="droidlab-diagnostics.txt", filetypes=[("Text files", "*.txt"), ("All files", "*.*")])
+        if not path:
+            return
+        try:
+            log_path = _log_directory() / "droidlab.log"
+            with open(path, "w", encoding="utf-8") as report:
+                report.write("DroidLab diagnostic report\\n")
+                report.write("Platform: " + platform.platform() + "\\nPython: " + sys.version + "\\n")
+                report.write("Executable: " + sys.executable + "\\nFrozen build: " + str(bool(getattr(sys, "frozen", False))) + "\\n")
+                report.write("Log directory: " + str(_log_directory()) + "\\n\\n--- Application log (latest file) ---\\n")
+                report.write(log_path.read_text(encoding="utf-8", errors="replace") if log_path.is_file() else "No log file found.\\n")
+            logging.info("Diagnostic report exported to %s", path)
+            messagebox.showinfo("Diagnostics saved", "Report saved to:\\n" + path, parent=self)
+        except OSError:
+            logging.exception("Could not export diagnostic report")
+            messagebox.showerror("Export failed", "Could not write the diagnostic report. Check the destination and permissions.", parent=self)
+
     def _tool_path(self, name):
         """Prefer bundled platform-tools, then fall back to the user's PATH."""
         candidates = []
@@ -797,7 +877,13 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.status.set(f"Selected: {chosen.name}")
         self._append(f"Selected by drag and drop: {chosen}")
         return "break"
-    def _append(self,msg):self.log.configure(state="normal"); self.log.insert("end",str(msg)+"\n"); self.log.see("end"); self.log.configure(state="disabled")
+    def _append(self, msg):
+        message = str(msg)
+        logging.log(logging.ERROR if message.startswith("ERROR:") else logging.INFO, "%s", message)
+        self.log.configure(state="normal")
+        self.log.insert("end", message + "\\n")
+        self.log.see("end")
+        self.log.configure(state="disabled")
     def _busy(self,value):self.start_button.configure(state="disabled" if value else "normal"); self.cancel_button.configure(state="normal" if value else "disabled"); self.progress.start(12) if value else self.progress.stop()
     def _browse_source(self):
         """Open the native file picker with a valid starting folder and owner."""
@@ -1043,4 +1129,14 @@ class PayloadDumperApp(TkinterDnD.Tk):
                     if kind=="error":messagebox.showerror("Operation failed",payload)
         except queue.Empty:pass
         self.after(100,self._poll_events)
-if __name__=="__main__":PayloadDumperApp().mainloop()
+if __name__ == "__main__":
+    _configure_logging()
+    sys.excepthook = _log_uncaught_exception
+    try:
+        PayloadDumperApp().mainloop()
+    except Exception:
+        logging.exception("Fatal exception in application main loop")
+        raise
+    finally:
+        logging.info("==== %s stopped ====", APP_NAME)
+        logging.shutdown()
