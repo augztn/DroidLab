@@ -721,28 +721,50 @@ class PayloadDumperApp(TkinterDnD.Tk):
         widget.configure(state="disabled")
 
     def _stream_process(self, command, timeout, kind):
-        """Run host commands and forward merged stdout/stderr to a live console."""
+        """Run a host command and stream output safely on Windows and POSIX."""
         import time
-        self.events.put(("console_line", (kind, "[DroidLab] $ " + subprocess.list2cmdline(command) + "\n")))
+        from queue import Queue, Empty
+
+        rendered = subprocess.list2cmdline(command) if os.name == "nt" else shlex.join(command)
+        self.events.put(("console_line", (kind, "[DroidLab] $ " + rendered + "\n")))
         process = None
         output_lines = []
         try:
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                        stdin=subprocess.DEVNULL, text=True, encoding="utf-8",
                                        errors="replace", bufsize=1, **_windows_process_options())
+            # A dedicated reader avoids blocking the timeout loop on readline() when
+            # a tool stays silent. Queue and thread usage is portable across Windows/Linux.
+            lines = Queue()
+
+            def read_output():
+                try:
+                    for line in process.stdout:
+                        lines.put(line)
+                finally:
+                    lines.put(None)
+
+            reader = threading.Thread(target=read_output, name="DroidLab-CommandOutput", daemon=True)
+            reader.start()
             deadline = time.monotonic() + timeout
-            while True:
-                line = process.stdout.readline()
-                if line:
+            stream_closed = False
+            while not stream_closed:
+                if time.monotonic() >= deadline and process.poll() is None:
+                    process.kill()
+                    process.wait()
+                    raise subprocess.TimeoutExpired(command, timeout)
+                try:
+                    line = lines.get(timeout=min(0.15, max(0.01, deadline - time.monotonic())))
+                except Empty:
+                    continue
+                if line is None:
+                    stream_closed = True
+                else:
                     output_lines.append(line)
                     self.events.put(("console_line", (kind, line)))
-                elif process.poll() is not None:
-                    break
-                elif time.monotonic() >= deadline:
-                    process.kill()
-                    raise subprocess.TimeoutExpired(command, timeout)
             code = process.wait()
             output = "".join(output_lines).strip() or "Exit status: " + str(code)
+            self.events.put(("console_line", (kind, "[DroidLab] Process exited with code " + str(code) + "\n")))
             self.events.put(("adb_result", (kind, code, output)))
         except (OSError, subprocess.TimeoutExpired) as exc:
             if process and process.poll() is None:
