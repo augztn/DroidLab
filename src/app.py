@@ -775,6 +775,16 @@ class PayloadDumperApp(TkinterDnD.Tk):
         if not tokens:
             return
         first = Path(tokens[0]).name.lower()
+        # Fastboot is a host-side executable, never an Android device-shell
+        # command. Route it to its own runner and console even when entered in
+        # the advanced command field.
+        if first in ("fastboot", "fastboot.exe"):
+            selected_target = getattr(self, "_adb_targets", {}).get(self.adb_device.get())
+            if selected_target and selected_target[1] == "fastboot":
+                self.fastboot_device.set(selected_target[0])
+            self.fastboot_manual_command.set(text)
+            self._run_fastboot_manual()
+            return
         if first in ("adb", "adb.exe"):
             binary = self._tool_path("adb.exe" if os.name == "nt" else "adb") or self._tool_path("adb")
             if not binary:
@@ -831,6 +841,12 @@ class PayloadDumperApp(TkinterDnD.Tk):
         if not tokens:
             tokens = ["devices"]
         serial = self.fastboot_device.get().strip()
+        # If the dedicated Fastboot selector is empty, reuse the shared ADB &
+        # Sideload selector only when it currently identifies a Fastboot device.
+        if not serial:
+            shared = getattr(self, "_adb_targets", {}).get(self.adb_device.get())
+            if shared and shared[1] == "fastboot":
+                serial = shared[0]
         discovery = tokens[0] in ("devices", "help", "--help", "--version", "version")
         if serial and not discovery and not any(tokens[i] == "-s" for i in range(min(len(tokens), 3))):
             tokens = ["-s", serial] + tokens
