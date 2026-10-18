@@ -54,6 +54,11 @@ class DebloaterParsingTests(unittest.TestCase):
         self.assertEqual(classify_package("com.example.notlisted", "System")[0], "UNKNOWN")
         self.assertEqual(classify_package("com.android.systemui", "System")[0], "PROTECTED")
 
+    def test_wildcard_vendor_profiles_match_subpackages(self):
+        profile = get_package_profile("com.samsung.android.knox.analytics")
+        self.assertEqual(profile.get("risk"), "high")
+        self.assertIn("Knox", " ".join(profile.get("sources", [])))
+
     def test_profile_duplicate_uses_stricter_risk(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
