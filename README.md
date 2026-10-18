@@ -1,6 +1,6 @@
 # DroidLab
 
-DroidLab is a desktop Android firmware toolkit for inspecting and extracting OTA `payload.bin` files and OTA ZIP packages, guarded Fastboot flashing, ADB diagnostics/sideloading, and Android app management. Linux builds are distributed as AppImages; Windows builds are distributed as portable ZIP bundles.
+DroidLab is a desktop Android firmware toolkit for inspecting and extracting OTA `payload.bin` files and OTA ZIP packages, guarded Fastboot flashing, and ADB diagnostics and sideloading. It is not an Android app manager or bloatware-removal tool. Linux builds are distributed as AppImages; Windows builds are distributed as portable ZIP bundles.
 
 ## Current implementation
 
@@ -9,12 +9,12 @@ DroidLab is a desktop Android firmware toolkit for inspecting and extracting OTA
 - Extract all partitions or selected partitions.
 - Display backend output and provide cancellation by terminating the backend process.
 - Optional SHA-256 fingerprints for output files. These fingerprints are not a substitute for the OTA backend's own integrity checks.
-- Fastboot & Flashing tab: drag/drop `.img` files, filename-based partition suggestions, Fastboot device detection, command preview, and explicit confirmation before flashing.
-- ADB & Sideload tab: detect ADB device states; reboot normally, to bootloader, or recovery; view live `adb logcat`; save logcat to a text file; generate a bugreport ZIP; run trusted `adb shell` diagnostics such as `dumpsys battery`; and sideload OTA ZIPs while the device is in recovery's “Apply update from ADB” mode.
-- ADB & Sideload tab: discover authorized and recovery-mode devices, reboot, view/filter/pause live `adb logcat`, save logs, create and verify bugreport ZIPs, run shell diagnostics, and sideload compatible ZIP packages.
-- Windows bundles include Google's ADB/Fastboot when the platform-tools build is available. The app prefers the bundled tools and falls back to `PATH`; Linux builds use installed ADB/Fastboot from `PATH`.
+- **Payload Extractor:** inspect OTA packages and extract all or selected partition images.
+- **Fastboot & Flashing:** drag/drop `.img` files, filename-based partition suggestions, Fastboot device detection, command preview, and explicit confirmation before flashing.
+- **ADB & Sideload:** detect ADB device states, reboot normally or to bootloader/recovery, view and filter live `adb logcat`, pause/resume log display, save logs, create and verify bugreport ZIPs, run shell diagnostics, and sideload compatible ZIP packages.
+- Windows bundles include Google's ADB/Fastboot when compatible platform-tools binaries are available. The app prefers bundled tools and falls back to `PATH`; Linux builds use installed ADB/Fastboot from `PATH`.
 - The app requires explicit confirmation before rebooting, flashing, sideloading, or collecting a bugreport. Bugreports may contain sensitive device data.
-- AppImage build script packages the GUI plus the `payload-dumper-go` backend.
+- The AppImage build script packages the GUI plus the `payload-dumper-go` backend.
 
 ## Windows build
 
