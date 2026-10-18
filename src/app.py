@@ -472,9 +472,12 @@ class PayloadDumperApp(TkinterDnD.Tk):
         power=ttk.Frame(actions,style="Panel.TFrame",padding=10); power.pack(side="left",fill="both",expand=True,padx=(0,8))
         ttk.Label(power,text="POWER & REBOOTING",background="#1f2937",foreground="#93c5fd").pack(anchor="w",pady=(0,6))
         row=ttk.Frame(power,style="Panel.TFrame"); row.pack(fill="x")
-        ttk.Button(row,text="Reboot",command=lambda:self._adb_reboot("")).pack(side="left",padx=(0,4))
-        ttk.Button(row,text="Bootloader",command=lambda:self._adb_reboot("bootloader")).pack(side="left",padx=4)
-        ttk.Button(row,text="Recovery",command=lambda:self._adb_reboot("recovery")).pack(side="left",padx=4)
+        self.reboot_button=ttk.Button(row,text="Reboot",command=lambda:self._adb_reboot(""))
+        self.reboot_button.pack(side="left",padx=(0,4))
+        self.bootloader_button=ttk.Button(row,text="Bootloader",command=lambda:self._adb_reboot("bootloader"))
+        self.bootloader_button.pack(side="left",padx=4)
+        self.recovery_button=ttk.Button(row,text="Recovery",command=lambda:self._adb_reboot("recovery"))
+        self.recovery_button.pack(side="left",padx=4)
         diag=ttk.Frame(actions,style="Panel.TFrame",padding=10); diag.pack(side="left",fill="both",expand=True)
         ttk.Label(diag,text="LOGS & DIAGNOSTICS",background="#1f2937",foreground="#93c5fd").pack(anchor="w",pady=(0,6))
         row=ttk.Frame(diag,style="Panel.TFrame"); row.pack(fill="x")
@@ -511,19 +514,60 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.adb_log_lines = []
 
     def _refresh_adb_devices(self):
-        binary=self._tool_path("adb.exe" if os.name == "nt" else "adb") or self._tool_path("adb")
-        if not binary: messagebox.showerror("ADB not found","Install Android SDK Platform-Tools and ensure adb is on PATH."); return
-        try: result=subprocess.run([binary,"devices","-l"],capture_output=True,text=True,encoding="utf-8",errors="replace",timeout=10,check=False,**_windows_process_options())
-        except (OSError,subprocess.TimeoutExpired) as exc: messagebox.showerror("ADB scan failed",str(exc)); return
-        targets={}
-        for line in result.stdout.splitlines()[1:]:
-            fields=line.split()
-            if len(fields)>=2 and fields[1] in ("device","sideload","recovery","unauthorized","offline"):
-                label=fields[0]+" ["+fields[1]+"]"; targets[label]=(fields[0],fields[1])
-        self._adb_targets=targets; labels=list(targets); self.adb_device_combo["values"]=labels
-        self.adb_device.set(labels[0] if len(labels)==1 else (self.adb_device.get() if self.adb_device.get() in targets else ""))
-        self.adb_device_status.set(result.stdout.strip() or "No devices reported by adb.")
-        self._append("ADB scan: "+(", ".join(labels) if labels else "no devices found"))
+        """Refresh one selector with devices visible to either ADB or Fastboot."""
+        adb_binary = self._tool_path("adb.exe" if os.name == "nt" else "adb") or self._tool_path("adb")
+        fastboot_binary = self._tool_path("fastboot.exe" if os.name == "nt" else "fastboot") or self._tool_path("fastboot")
+        targets = {}
+        status_lines = []
+        if adb_binary:
+            try:
+                result = subprocess.run([adb_binary, "devices", "-l"], capture_output=True, text=True,
+                    encoding="utf-8", errors="replace", timeout=10, check=False, **_windows_process_options())
+                for line in result.stdout.splitlines()[1:]:
+                    fields = line.split()
+                    if len(fields) >= 2 and fields[1] in ("device", "sideload", "recovery", "unauthorized", "offline"):
+                        targets[fields[0] + " [ADB: " + fields[1] + "]"] = (fields[0], "adb:" + fields[1])
+                status_lines.append("ADB: " + (", ".join(k for k,v in targets.items() if v[1].startswith("adb:")) or "no devices"))
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                status_lines.append("ADB scan failed: " + str(exc))
+        else:
+            status_lines.append("ADB tools not found")
+        if fastboot_binary:
+            try:
+                result = subprocess.run([fastboot_binary, "devices", "-l"], capture_output=True, text=True,
+                    encoding="utf-8", errors="replace", timeout=8, check=False, **_windows_process_options())
+                found = []
+                for line in result.stdout.splitlines():
+                    fields = line.split()
+                    if len(fields) >= 2 and fields[1].lower() == "fastboot":
+                        label = fields[0] + " [Fastboot]"
+                        targets[label] = (fields[0], "fastboot")
+                        found.append(label)
+                status_lines.append("Fastboot: " + (", ".join(found) or "no devices"))
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                status_lines.append("Fastboot scan failed: " + str(exc))
+        else:
+            status_lines.append("Fastboot tools not found")
+        previous = self.adb_device.get()
+        self._adb_targets = targets
+        labels = list(targets)
+        self.adb_device_combo["values"] = labels
+        self.adb_device.set(previous if previous in targets else (labels[0] if len(labels) == 1 else ""))
+        self._update_reboot_actions()
+        self.adb_device_status.set(" | ".join(status_lines))
+        self._append("Combined device scan: " + (", ".join(labels) if labels else "no ADB or Fastboot devices found"))
+
+    def _update_reboot_actions(self):
+        target = getattr(self, "_adb_targets", {}).get(self.adb_device.get())
+        is_fastboot = bool(target and target[1] == "fastboot")
+        if hasattr(self, "bootloader_button"):
+            self.bootloader_button.configure(state="disabled" if is_fastboot else "normal")
+        if hasattr(self, "reboot_button"):
+            self.reboot_button.configure(text="Fastboot reboot" if is_fastboot else "Reboot")
+        if hasattr(self, "recovery_button"):
+            self.recovery_button.configure(text="Reboot recovery" if is_fastboot else "Recovery")
+        if is_fastboot:
+            self.adb_device_status.set("Fastboot/bootloader mode detected. Bootloader action is disabled; reboot actions use Fastboot.")
 
     def _adb_require(self, states=("device",)):
         binary = self._tool_path("adb.exe" if os.name == "nt" else "adb") or self._tool_path("adb")
@@ -535,16 +579,44 @@ class PayloadDumperApp(TkinterDnD.Tk):
         return binary,serial
 
     def _adb_reboot(self, mode):
-        selected=self._adb_require(("device","recovery"))
-        if not selected:return
-        binary,serial=selected; label=mode or "normal"; command=[binary,"-s",serial,"reboot"]+([mode] if mode else [])
-        if not messagebox.askyesno("Confirm reboot","Reboot "+serial+" into "+label+" mode?"):return
+        target = getattr(self, "_adb_targets", {}).get(self.adb_device.get())
+        if not target:
+            messagebox.showwarning("Select device", "Refresh devices and select an ADB or Fastboot device.")
+            return
+        serial, state = target
+        is_fastboot = state == "fastboot"
+        if is_fastboot:
+            binary = self._tool_path("fastboot.exe" if os.name == "nt" else "fastboot") or self._tool_path("fastboot")
+            if not binary:
+                messagebox.showerror("Fastboot not found", "Install Android platform-tools and ensure fastboot is on PATH.")
+                return
+            if mode == "bootloader":
+                messagebox.showinfo("Already in Fastboot", "The device is already in bootloader/Fastboot mode.")
+                return
+            command = [binary, "-s", serial, "reboot"] + (["recovery"] if mode == "recovery" else [])
+            label = "recovery" if mode == "recovery" else "normal"
+            title = "Fastboot reboot"
+        else:
+            selected = self._adb_require(("device", "recovery"))
+            if not selected:
+                return
+            binary, serial = selected
+            command = [binary, "-s", serial, "reboot"] + ([mode] if mode else [])
+            label = mode or "normal"
+            title = "ADB reboot"
+        if not messagebox.askyesno("Confirm reboot", "Reboot " + serial + " into " + label + " mode?"):
+            return
         try:
-            result=subprocess.run(command,capture_output=True,text=True,encoding="utf-8",errors="replace",timeout=20,check=False,**_windows_process_options()); output=(result.stdout+"\n"+result.stderr).strip()
-            self._append("ADB reboot "+label+": "+(output or "exit status "+str(result.returncode)))
-            if result.returncode:messagebox.showerror("ADB reboot failed",output or "adb exit status "+str(result.returncode))
-            else:self.adb_device_status.set("Reboot command sent. Refresh after the device changes mode.")
-        except (OSError,subprocess.TimeoutExpired) as exc:messagebox.showerror("ADB reboot failed",str(exc))
+            result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=25, check=False, **_windows_process_options())
+            output = (result.stdout + "\n" + result.stderr).strip()
+            self._append(title + " " + label + ": " + (output or "exit status " + str(result.returncode)))
+            if result.returncode:
+                messagebox.showerror(title + " failed", output or title + " exit status " + str(result.returncode))
+            else:
+                self.adb_device_status.set("Reboot command sent. Refresh devices after the device changes mode.")
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            messagebox.showerror(title + " failed", str(exc))
 
     def _enable_sideload_drop(self, widget):
         """Register a drop target that routes OTA ZIPs to the sideload field."""
