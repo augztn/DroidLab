@@ -458,7 +458,8 @@ class DebloaterTab:
             ("Restore rescue file…", self.restore_rescue),
         ):
             ttk.Button(actions, text=text, command=cmd).pack(side="left", padx=(0, 5))
-        ttk.Checkbutton(actions, text="Allow actions on non-core system apps (advanced)",
+        ttk.Button(actions, text="Select low-risk candidates", command=self.select_low_risk_candidates).pack(side="left", padx=(0, 5))
+        ttk.Checkbutton(actions, text="Advanced Mode — allow system/high-risk changes",
                         variable=self.advanced_var, style="TCheckbutton").pack(side="right")
         warning = ttk.Label(p, text=f"Community risk guidance: {len(PACKAGE_PROFILES)} package profiles loaded. Ratings may be outdated or inaccurate; LOW RISK is not a guarantee. Core components are blocked. System or high-risk changes require Advanced Mode. Rescue files store names, not APKs or user data.",
                             foreground="#fecaca", background="#2a1d27", wraplength=1100, justify="left", padding=9)
@@ -546,14 +547,14 @@ class DebloaterTab:
         source_text = ", ".join(sources) if sources else "No community profile matched"
         recommended = "Yes — still review device-specific dependencies" if package.get("profile_recommended") else "No"
         detail = (
-            f"Package: {package.get('name', name)}\\n"
-            f"Type: {package.get('type', 'Unknown')}\\n"
-            f"Risk guidance: {package.get('risk', 'UNKNOWN')}\\n"
-            f"Category: {package.get('category', 'Unknown')}\\n\\n"
-            f"Guidance: {package.get('reason', 'No package guidance available.')}\\n\\n"
-            f"Profile source: {source_text}\\n"
-            f"Community profile marks as a removal candidate: {recommended}\\n\\n"
-            f"APK path: {package.get('path', 'Unknown')}\\n\\n"
+            f"Package: {package.get('name', name)}\n"
+            f"Type: {package.get('type', 'Unknown')}\n"
+            f"Risk guidance: {package.get('risk', 'UNKNOWN')}\n"
+            f"Category: {package.get('category', 'Unknown')}\n\n"
+            f"Guidance: {package.get('reason', 'No package guidance available.')}\n\n"
+            f"Profile source: {source_text}\n"
+            f"Community profile marks as a removal candidate: {recommended}\n\n"
+            f"APK path: {package.get('path', 'Unknown')}\n\n"
             "Community ratings are informational, may not match your firmware version, and never guarantee safe removal."
         )
         messagebox.showinfo("Package details", detail, parent=self.parent)
@@ -563,6 +564,22 @@ class DebloaterTab:
 
     def clear_selection(self):
         self.tree.selection_remove(self.tree.selection())
+
+    def select_low_risk_candidates(self):
+        visible_names = self.tree.get_children()
+        candidates = {
+            package["name"] for package in self.packages
+            if package["name"] in visible_names
+            and package.get("risk") == "LOW RISK"
+            and package.get("profile_recommended")
+        }
+        if not candidates:
+            messagebox.showinfo("No profile candidates",
+                "No visible packages are marked as low-risk candidates by the bundled community profiles. Clear filters or review package details.",
+                parent=self.parent)
+            return
+        self.tree.selection_set(sorted(candidates))
+        self.status_var.set(f"Selected {len(candidates)} low-risk profile candidate(s). Review each package before applying an action.")
 
     def _selected_packages(self):
         return list(self.tree.selection())
