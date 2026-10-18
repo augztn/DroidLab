@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""DroidLab Linux desktop UI."""
+"""Cross-platform DroidLab desktop UI for Android firmware workflows."""
 from __future__ import annotations
 import os, queue, threading, tkinter as tk, shutil, re, shlex, sys
 import subprocess, webbrowser
