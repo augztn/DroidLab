@@ -28,7 +28,7 @@ jobs:
         run: PYTHONPATH=. python3 -m unittest discover -s tests -v
       - name: Smoke-test frozen GUI bundle
         run: |
-          python -m PyInstaller --noconfirm --clean --onefile --windowed --name droidlab-gui --add-data "$GITHUB_WORKSPACE/resources/safety-db:safety-db" --distpath /tmp/pyinstaller-dist --workpath /tmp/pyinstaller-build --specpath /tmp --paths src --hidden-import=payload_dumper --hidden-import=tkinter.ttk --collect-all tkinterdnd2 src/app.py
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name droidlab-gui --distpath /tmp/pyinstaller-dist --workpath /tmp/pyinstaller-build --specpath /tmp --paths src --hidden-import=payload_dumper --hidden-import=tkinter.ttk --collect-all tkinterdnd2 src/app.py
           test -x /tmp/pyinstaller-dist/droidlab-gui
   appimage:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
