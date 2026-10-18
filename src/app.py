@@ -575,6 +575,8 @@ class PayloadDumperApp(TkinterDnD.Tk):
         target=getattr(self,"_adb_targets",{}).get(self.adb_device.get())
         if not target: messagebox.showwarning("Select device","Refresh devices and select a device."); return None
         serial,state=target
+        if state.startswith("adb:"):
+            state = state.split(":", 1)[1]
         if state not in states: messagebox.showwarning("Device not ready","Device state is "+state+". Expected: "+", ".join(states)+"."); return None
         return binary,serial
 
