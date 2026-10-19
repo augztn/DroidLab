@@ -570,73 +570,96 @@ class PayloadDumperApp(TkinterDnD.Tk):
         ttk.Label(reference, textvariable=self.maintenance_status, background="#1f2937", foreground="#cbd5e1",
                   wraplength=320, justify="left", font=("Sans", 9)).pack(anchor="w", pady=(5, 0))
 
-        box = ttk.Frame(controls, style="Panel.TFrame", padding=12)
-        box.grid(row=1, column=0, sticky="ew", pady=(0, 8))
-        ttk.Label(box, text="IMAGE FILE", background="#1f2937", foreground="#93c5fd",
-                  font=("Sans", 10, "bold")).pack(anchor="w")
-        image_row = ttk.Frame(box, style="Panel.TFrame")
-        image_row.pack(fill="x", pady=(5, 0))
+        # Compact two-row flashing pipeline: file/partition/flash, then command/preview/run.
+        pipeline = ttk.Frame(controls, style="Panel.TFrame", padding=10)
+        pipeline.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+        pipeline.columnconfigure(0, weight=6, uniform="flash_pipeline")
+        pipeline.columnconfigure(1, weight=2, uniform="flash_pipeline")
+        pipeline.columnconfigure(2, weight=1, uniform="flash_pipeline")
+
+        def pipeline_label(parent, text):
+            ttk.Label(parent, text=text, background="#1f2937", foreground="#93c5fd",
+                      font=("Sans", 9, "bold")).pack(anchor="w", pady=(0, 4))
+
+        # Row 1 / column 1: single-line path field and adjacent Browse button.
+        image_cell = ttk.Frame(pipeline, style="Panel.TFrame")
+        image_cell.grid(row=0, column=0, sticky="ew", padx=(0, 8), pady=(0, 8))
+        pipeline_label(image_cell, "IMAGE FILE")
+        image_row = ttk.Frame(image_cell, style="Panel.TFrame")
+        image_row.pack(fill="x")
         self.flash_image = tk.StringVar()
         self.flash_entry = ttk.Entry(image_row, textvariable=self.flash_image)
         self.flash_entry.pack(side="left", fill="x", expand=True, ipady=4)
-        ttk.Button(image_row, text="Browse…", command=self._browse_flash_image).pack(side="left", padx=(7, 0))
-        self._enable_drop(box)
+        ttk.Button(image_row, text="Browse…", command=self._browse_flash_image).pack(
+            side="left", padx=(6, 0))
+        self._enable_drop(image_cell)
         self._enable_drop(self.flash_entry)
-        self._enable_drop(tab)
 
-        partition = ttk.Frame(controls, style="Panel.TFrame", padding=12)
-        partition.grid(row=2, column=0, sticky="ew", pady=(0, 8))
-        ttk.Label(partition, text="TARGET PARTITION", background="#1f2937", foreground="#93c5fd",
-                  font=("Sans", 10, "bold")).pack(anchor="w")
+        # Row 1 / column 2: deliberately fixed-width target selector.
+        partition_cell = ttk.Frame(pipeline, style="Panel.TFrame")
+        partition_cell.grid(row=0, column=1, sticky="ew", padx=(0, 8), pady=(0, 8))
+        pipeline_label(partition_cell, "TARGET PARTITION")
         self.flash_partition = tk.StringVar()
         self.partition_combo = ttk.Combobox(
-            partition, textvariable=self.flash_partition,
+            partition_cell, textvariable=self.flash_partition,
             values=("boot", "vendor", "vendor_boot", "init_boot", "dtbo", "vbmeta", "recovery",
                     "system", "product", "odm", "system_ext", "vbmeta_system", "vbmeta_vendor"),
-            state="readonly", width=24)
-        self.partition_combo.pack(anchor="w", pady=(5, 0))
-        # The partition must only change through an explicit dropdown selection.
-        # Ignore wheel/trackpad events so scrolling the page cannot change the flash target.
+            state="readonly", width=18)
+        self.partition_combo.pack(fill="x", ipady=2)
+        # Only explicit dropdown selection may change the flash target; scrolling must not.
         def _block_partition_wheel(_event):
             return "break"
         for _wheel_event in ("<MouseWheel>", "<Shift-MouseWheel>", "<Button-4>", "<Button-5>",
                              "<Button-6>", "<Button-7>"):
             self.partition_combo.bind(_wheel_event, _block_partition_wheel)
 
-        preview = ttk.Frame(controls, style="Panel.TFrame", padding=12)
-        preview.grid(row=3, column=0, sticky="ew", pady=(0, 8))
-        ttk.Label(preview, text="COMMAND PREVIEW", background="#1f2937", foreground="#93c5fd",
-                  font=("Sans", 10, "bold")).pack(anchor="w")
+        # Row 1 / column 3: primary action, aligned with the controls.
+        flash_cell = ttk.Frame(pipeline, style="Panel.TFrame")
+        flash_cell.grid(row=0, column=2, sticky="ew", pady=(18, 8))
+        ttk.Button(flash_cell, text="Flash image…", command=self._flash_image,
+                   style="Primary.TButton").pack(fill="x", ipady=3)
+
+        # Row 2 / column 1: custom host-side Fastboot command.
+        command_cell = ttk.Frame(pipeline, style="Panel.TFrame")
+        command_cell.grid(row=1, column=0, sticky="ew", padx=(0, 8))
+        pipeline_label(command_cell, "ADVANCED FASTBOOT COMMAND")
+        self.fastboot_manual_command = tk.StringVar(value="fastboot devices")
+        self.fastboot_manual_entry = ttk.Entry(command_cell, textvariable=self.fastboot_manual_command)
+        self.fastboot_manual_entry.pack(fill="x", ipady=4)
+        self._enable_command_drop(self.fastboot_manual_entry, self.fastboot_manual_command, "fastboot")
+
+        # Row 2 / column 2: preview action and compact status.
+        preview_cell = ttk.Frame(pipeline, style="Panel.TFrame")
+        preview_cell.grid(row=1, column=1, sticky="ew", padx=(0, 8))
+        pipeline_label(preview_cell, "COMMAND PREVIEW")
+        ttk.Button(preview_cell, text="Preview command",
+                   command=self._update_flash_preview).pack(fill="x", ipady=3)
+
+        # Row 2 / column 3: execute the entered host-side command.
+        run_cell = ttk.Frame(pipeline, style="Panel.TFrame")
+        run_cell.grid(row=1, column=2, sticky="ew")
+        pipeline_label(run_cell, "RUN")
+        manual_buttons = ttk.Frame(run_cell, style="Panel.TFrame")
+        manual_buttons.pack(fill="x")
+        ttk.Button(manual_buttons, text="Run command", command=self._run_fastboot_manual,
+                   style="Primary.TButton").pack(fill="x", ipady=3)
+        ttk.Button(run_cell, text="Clear command",
+                   command=lambda: self.fastboot_manual_command.set("")).pack(fill="x", pady=(4, 0))
+
+        # Read-only preview stays separate from command execution and console output.
         self.flash_command = tk.StringVar(value="Select an image, partition, and Fastboot device.")
-        ttk.Label(preview, textvariable=self.flash_command, background="#0b1220", foreground="#f1f5f9",
-                  padding=9, wraplength=700, justify="left").pack(fill="x", pady=(5, 0))
+        preview_output = ttk.Label(controls, textvariable=self.flash_command,
+                                   background="#0b1220", foreground="#cbd5e1",
+                                   padding=(8, 5), font=("Monospace", 9), anchor="w")
+        preview_output.grid(row=2, column=0, sticky="ew", pady=(0, 8))
 
         ttk.Label(controls,
-                  text="FLASHING RISK · An incompatible image or incorrect partition can stop Android from booting. Verify compatibility before flashing.",
+                  text="⚠ FLASHING RISK · An incompatible image or incorrect partition can prevent Android from booting. Verify compatibility before flashing.",
                   foreground="#fecaca", background="#2a1d27", wraplength=850, justify="left",
-                  font=("Sans", 10), padding=10).grid(row=4, column=0, sticky="ew", pady=(0, 8))
-        flash_buttons = ttk.Frame(controls)
-        flash_buttons.grid(row=5, column=0, sticky="nw")
-        ttk.Button(flash_buttons, text="Preview command", command=self._update_flash_preview).pack(side="left")
-        ttk.Button(flash_buttons, text="Flash image…", command=self._flash_image, style="Primary.TButton").pack(side="left", padx=(7, 0))
+                  font=("Sans", 9), padding=8).grid(row=3, column=0, sticky="ew", pady=(0, 8))
 
-        # Advanced commands live below the flashing controls, not under the console.
-        manual = ttk.Frame(controls, style="Panel.TFrame", padding=12)
-        manual.grid(row=6, column=0, sticky="ew", pady=(10, 0))
-        ttk.Label(manual, text="ADVANCED FASTBOOT COMMAND", background="#1f2937",
-                  foreground="#93c5fd", font=("Sans", 11, "bold")).pack(anchor="w")
-        ttk.Label(manual, text="Run host-side commands such as fastboot devices, fastboot getvar all, or fastboot reboot. Paths with spaces are supported.",
-                  background="#1f2937", foreground="#cbd5e1", wraplength=800, justify="left").pack(
-                      anchor="w", pady=(4, 6))
-        self.fastboot_manual_command = tk.StringVar(value="fastboot devices")
-        self.fastboot_manual_entry = ttk.Entry(manual, textvariable=self.fastboot_manual_command)
-        self.fastboot_manual_entry.pack(fill="x", pady=(0, 6), ipady=4)
-        manual_buttons = ttk.Frame(manual, style="Panel.TFrame")
-        manual_buttons.pack(fill="x")
-        ttk.Button(manual_buttons, text="Run Fastboot command", command=self._run_fastboot_manual, style="Primary.TButton").pack(side="left")
-        ttk.Button(manual_buttons, text="Clear", command=lambda: self.fastboot_manual_command.set("")).pack(
-            side="left", padx=(7, 0))
-        self._enable_command_drop(self.fastboot_manual_entry, self.fastboot_manual_command, "fastboot")
+        self.flash_image.trace_add("write", lambda *_: self._on_flash_image_changed())
+        self._enable_drop(tab)
 
         # The console owns the full right workspace height for continuous output visibility.
         right = ttk.Frame(tab, style="Panel.TFrame", padding=5)
