@@ -31,8 +31,7 @@ jobs:
           python -m PyInstaller --noconfirm --clean --onefile --windowed --name droidlab-gui --distpath /tmp/pyinstaller-dist --workpath /tmp/pyinstaller-build --specpath /tmp --paths src --hidden-import=payload_dumper --hidden-import=tkinter.ttk --collect-all tkinterdnd2 src/app.py
           test -x /tmp/pyinstaller-dist/droidlab-gui
 
-  # Build and smoke-test the AppImage on CI, but don't upload an Actions artifact
-  # on every push. Version tags publish permanent release assets instead.
+  # Build and smoke-test the AppImage, and make non-release test builds downloadable.
   appimage:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-22.04
@@ -76,6 +75,14 @@ jobs:
             echo "AppImage did not stay running (exit code $status)" >&2
             exit 1
           fi
+      - name: Upload downloadable AppImage test build
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: droidlab-appimage-ci
+          path: dist/*.AppImage
+          if-no-files-found: error
+          retention-days: 7
       - name: Generate checksum
         if: startsWith(github.ref, 'refs/tags/v')
         run: cd dist && sha256sum *.AppImage > SHA256SUMS
