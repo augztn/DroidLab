@@ -393,8 +393,26 @@ class PayloadDumperApp(TkinterDnD.Tk):
 
         # Device selector comes first so every later operation has a clear target.
         device = ttk.Frame(tab, style="Panel.TFrame", padding=10)
-        device.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(0, 10))
+        device.grid(row=2, column=0, sticky="nsew", padx=(0, 10), pady=(0, 10))
         device.columnconfigure(0, weight=1)
+        info = ttk.Frame(tab, style="Panel.TFrame", padding=10)
+        info.grid(row=2, column=1, sticky="nsew", pady=(0, 10))
+        info.columnconfigure(0, weight=1)
+        ttk.Label(info, text="DEVICE INFO", background="#1f2937", foreground="#93c5fd",
+                  font=("Sans", 11, "bold")).grid(row=0, column=0, sticky="w")
+        self.device_info_mode = tk.StringVar(value="NO DEVICE")
+        self.device_info_mode_label = tk.Label(info, textvariable=self.device_info_mode,
+            bg="#4b5563", fg="#fef3c7", padx=8, pady=3, font=("Sans", 9, "bold"))
+        self.device_info_mode_label.grid(row=0, column=1, sticky="e", padx=(4, 0))
+        self.device_info_vars = {}
+        for row, (key, initial) in enumerate((("Brand / Manufacturer", "—"), ("Device name / Model", "—"),
+                ("Model code", "—"), ("Codename", "—"), ("Active slot", "—"),
+                ("Bootloader", "—"), ("Battery", "—")), start=1):
+            ttk.Label(info, text=key + ":", background="#1f2937", foreground="#cbd5e1").grid(row=row, column=0, sticky="w", pady=1)
+            var = tk.StringVar(value=initial)
+            self.device_info_vars[key] = var
+            ttk.Label(info, textvariable=var, background="#1f2937", foreground="#f8fafc",
+                      wraplength=230).grid(row=row, column=1, sticky="w", padx=(8, 0), pady=1)
         ttk.Label(device, text="FASTBOOT DEVICE", background="#1f2937", foreground="#93c5fd",
                   font=("Sans", 10, "bold")).grid(row=0, column=0, sticky="w")
         self.fastboot_device = tk.StringVar()
@@ -668,7 +686,83 @@ class PayloadDumperApp(TkinterDnD.Tk):
                 self.device_mode_status.set("MODE DETECTOR: " + mode + " · Serial: " + serial)
         else:
             self.device_mode_status.set("MODE DETECTOR: No device detected · Check USB, drivers/udev rules, and Platform-Tools")
+        self._refresh_device_info()
         self._append("Combined device scan: " + (", ".join(labels) if labels else "no ADB or Fastboot devices found"))
+
+    def _set_device_info(self, values, mode, color):
+        if not hasattr(self, "device_info_vars"):
+            return
+        self.device_info_mode.set(mode)
+        self.device_info_mode_label.configure(bg=color)
+        for key, value in values.items():
+            if key in self.device_info_vars:
+                self.device_info_vars[key].set(value or "—")
+
+    def _refresh_device_info(self):
+        """Read best-effort device identity and safety metadata for the selected target."""
+        target = getattr(self, "_adb_targets", {}).get(self.adb_device.get())
+        empty = {"Brand / Manufacturer": "—", "Device name / Model": "—", "Model code": "—",
+                 "Codename": "—", "Active slot": "—", "Bootloader": "—", "Battery": "—"}
+        if not target:
+            self._set_device_info(empty, "NO DEVICE", "#4b5563")
+            return
+        serial, state = target
+        values = dict(empty)
+        if state == "fastboot":
+            binary = self._tool_path("fastboot.exe" if os.name == "nt" else "fastboot") or self._tool_path("fastboot")
+            mode = self._detect_fastboot_submode(binary, serial) if binary else "Fastboot"
+            values["Device name / Model"] = serial
+            values["Model code"] = self._fastboot_getvar(binary, serial, "product")
+            values["Codename"] = values["Model code"]
+            values["Active slot"] = self._fastboot_getvar(binary, serial, "current-slot")
+            unlocked = self._fastboot_getvar(binary, serial, "unlocked").lower()
+            if unlocked == "yes": values["Bootloader"] = "Unlocked"
+            elif unlocked == "no": values["Bootloader"] = "Locked"
+            values["Brand / Manufacturer"] = self._fastboot_getvar(binary, serial, "manufacturer")
+            self._set_device_info(values, "FASTBOOTD" if "Fastbootd" in mode else "FASTBOOT",
+                                  "#2563eb" if "Fastbootd" in mode else "#ea580c")
+            return
+        adb = self._tool_path("adb.exe" if os.name == "nt" else "adb") or self._tool_path("adb")
+        adb_state = state.split(":", 1)[1] if state.startswith("adb:") else state
+        mode, color = {"device": ("ADB", "#16a34a"), "recovery": ("RECOVERY", "#ca8a04"),
+                       "sideload": ("SIDELOAD", "#ca8a04"), "unauthorized": ("ADB UNAUTHORIZED", "#ca8a04"),
+                       "offline": ("ADB OFFLINE", "#ca8a04")}.get(adb_state, ("ADB", "#16a34a"))
+        if adb:
+            def prop(name):
+                return self._adb_read_value(adb, serial, ["shell", "getprop", name])
+            values["Brand / Manufacturer"] = prop("ro.product.manufacturer") or prop("ro.product.brand")
+            values["Device name / Model"] = prop("ro.product.marketname") or prop("ro.product.model")
+            values["Model code"] = prop("ro.product.name") or prop("ro.product.model")
+            values["Codename"] = prop("ro.product.device") or prop("ro.build.product")
+            values["Active slot"] = prop("ro.boot.slot_suffix") or prop("ro.boot.slot")
+            locked = (prop("ro.boot.flash.locked") or prop("ro.boot.vbmeta.device_state")).lower()
+            values["Bootloader"] = {"0": "Unlocked", "1": "Locked", "unlocked": "Unlocked",
+                                    "locked": "Locked"}.get(locked, "Unknown")
+            battery = self._adb_read_value(adb, serial, ["shell", "dumpsys", "battery"])
+            match = re.search(r"(?m)^\s*level:\s*(\d+)", battery)
+            if match:
+                values["Battery"] = match.group(1) + "%"
+        self._set_device_info(values, mode, color)
+
+    def _adb_read_value(self, binary, serial, args):
+        try:
+            result = subprocess.run([binary, "-s", serial] + args, capture_output=True, text=True,
+                encoding="utf-8", errors="replace", timeout=3, check=False, **_windows_process_options())
+            return (result.stdout or "").strip() if result.returncode == 0 else ""
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+
+    def _fastboot_getvar(self, binary, serial, name):
+        if not binary:
+            return ""
+        try:
+            result = subprocess.run([binary, "-s", serial, "getvar", name], capture_output=True,
+                text=True, encoding="utf-8", errors="replace", timeout=3, check=False, **_windows_process_options())
+            output = (result.stdout or "") + "\n" + (result.stderr or "")
+            match = re.search(r"(?im)^\s*" + re.escape(name) + r"\s*:\s*(.+?)\s*$", output)
+            return match.group(1).strip() if match else ""
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
 
     def _detect_fastboot_submode(self, binary, serial):
         """Distinguish bootloader Fastboot from userspace Fastbootd when supported."""
