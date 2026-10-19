@@ -367,6 +367,10 @@ class PayloadDumperApp(TkinterDnD.Tk):
         target = getattr(self, "_adb_targets", {}).get(self.adb_device.get())
         if not target:
             self._update_reboot_actions()
+            if hasattr(self, "device_info_vars"):
+                self._set_device_info({"Brand / Manufacturer": "—", "Device name / Model": "—",
+                    "Model code": "—", "Codename": "—", "Active slot": "—",
+                    "Bootloader": "—", "Battery": "—"}, "NO DEVICE", "#4b5563")
             return
         serial, state = target
         if state == "fastboot":
@@ -379,6 +383,8 @@ class PayloadDumperApp(TkinterDnD.Tk):
                 mode = {"device": "ADB / Android", "recovery": "ADB Recovery", "sideload": "ADB Sideload", "unauthorized": "ADB Unauthorized", "offline": "ADB Offline"}.get(adb_state, "ADB (" + adb_state + ")")
                 self.device_mode_status.set("MODE DETECTOR: " + mode + " · Serial: " + serial)
         self._update_reboot_actions()
+        if hasattr(self, "device_info_vars"):
+            self._refresh_device_info()
 
     def _build_flash_tab(self, tab):
         """Build the Fastboot workspace with device-first selection and a live console."""
