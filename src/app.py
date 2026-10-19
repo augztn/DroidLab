@@ -592,7 +592,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
 
     def _build_adb_tab(self, tab):
         tab.columnconfigure(0, weight=1)
-        tab.rowconfigure(4, weight=1)
+        tab.rowconfigure(3, weight=1)
         ttk.Label(tab, text="ADB & Sideload", font=("Sans", 20, "bold")).grid(row=0, column=0, sticky="w", pady=(0, 8))
         ttk.Label(tab, text="Reboot, collect logs and diagnostics, run device shell commands, or sideload an OTA ZIP from recovery.", style="Muted.TLabel", wraplength=1100).grid(row=1, column=0, sticky="w", pady=(0, 12))
         device=ttk.Frame(tab,style="Panel.TFrame",padding=10); device.grid(row=2,column=0,sticky="ew",pady=(0,10))
@@ -605,8 +605,12 @@ class PayloadDumperApp(TkinterDnD.Tk):
         ttk.Label(device,textvariable=self.device_mode_status,background="#1f2937",foreground="#86efac",
                   wraplength=1000,font=("Sans",10,"bold")).pack(anchor="w",pady=(6,0))
         ttk.Label(device,textvariable=self.adb_device_status,background="#1f2937",foreground="#cbd5e1",wraplength=1000).pack(anchor="w",pady=(3,0))
-        adb_info = ttk.Frame(tab, style="Panel.TFrame", padding=10)
-        adb_info.grid(row=3, column=0, sticky="ew", pady=(0, 10))
+        # Controls remain on the left; device info and an expanded console share the right column.
+        workspace=ttk.Frame(tab); workspace.grid(row=3,column=0,sticky="nsew"); workspace.columnconfigure(0,weight=3,uniform="adb_workspace"); workspace.columnconfigure(1,weight=2,uniform="adb_workspace"); workspace.rowconfigure(0,weight=1)
+        lower=ttk.Frame(workspace); lower.grid(row=0,column=0,sticky="nsew",padx=(0,10)); lower.columnconfigure(0,weight=1); lower.rowconfigure(2,weight=1)
+        right=ttk.Frame(workspace); right.grid(row=0,column=1,sticky="nsew"); right.columnconfigure(0,weight=1); right.rowconfigure(1,weight=1)
+        adb_info = ttk.Frame(right, style="Panel.TFrame", padding=10)
+        adb_info.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         adb_info.columnconfigure(1, weight=1)
         ttk.Label(adb_info, text="DEVICE INFO", background="#1f2937", foreground="#93c5fd",
                   font=("Sans", 11, "bold")).grid(row=0, column=0, sticky="w")
@@ -614,10 +618,12 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.adb_device_info_mode_label = tk.Label(adb_info, textvariable=self.adb_device_info_mode,
             bg="#4b5563", fg="#fef3c7", padx=8, pady=3, font=("Sans", 9, "bold"))
         self.adb_device_info_mode_label.grid(row=0, column=2, sticky="e")
+        self.adb_info_loading = tk.StringVar(value="")
+        ttk.Label(adb_info, textvariable=self.adb_info_loading, background="#1f2937", foreground="#fbbf24").grid(row=0, column=1, sticky="e")
         self.adb_device_info_vars = {}
         for row_idx, (key, initial) in enumerate((("Brand / Manufacturer", "—"), ("Device name / Model", "—"),
                 ("Model code", "—"), ("Codename", "—"), ("Active slot", "—"),
-                ("Bootloader", "—"), ("Battery", "—")), start=1):
+                ("Android Version", "—"), ("Battery", "—")), start=1):
             ttk.Label(adb_info, text=key + ":", background="#1f2937", foreground="#cbd5e1").grid(
                 row=row_idx, column=0, sticky="w", pady=1)
             var = tk.StringVar(value=initial)
@@ -625,9 +631,9 @@ class PayloadDumperApp(TkinterDnD.Tk):
             ttk.Label(adb_info, textvariable=var, background="#1f2937", foreground="#f8fafc",
                       wraplength=300).grid(row=row_idx, column=1, sticky="w", padx=(8, 0), pady=1)
         # Two-column workspace keeps controls visible beside the live console.
-        workspace=ttk.Frame(tab); workspace.grid(row=4,column=0,sticky="nsew"); workspace.columnconfigure(0,weight=3,uniform="adb_workspace"); workspace.columnconfigure(1,weight=2,uniform="adb_workspace"); workspace.rowconfigure(0,weight=1)
+        workspace=ttk.Frame(tab); workspace.grid(row=3,column=0,sticky="nsew"); workspace.columnconfigure(0,weight=3,uniform="adb_workspace"); workspace.columnconfigure(1,weight=2,uniform="adb_workspace"); workspace.rowconfigure(0,weight=1)
         lower=ttk.Frame(workspace); lower.grid(row=0,column=0,sticky="nsew",padx=(0,10)); lower.columnconfigure(0,weight=1); lower.rowconfigure(2,weight=1)
-        adb_console_panel=ttk.Frame(workspace,style="Panel.TFrame",padding=10); adb_console_panel.grid(row=0,column=1,sticky="nsew"); adb_console_panel.rowconfigure(1,weight=1); adb_console_panel.columnconfigure(0,weight=1)
+        adb_console_panel=ttk.Frame(right,style="Panel.TFrame",padding=10); adb_console_panel.grid(row=1,column=0,sticky="nsew"); adb_console_panel.rowconfigure(1,weight=1); adb_console_panel.columnconfigure(0,weight=1)
         ttk.Label(adb_console_panel,text="REAL-TIME CONSOLE / ACTIVITY",background="#1f2937",foreground="#93c5fd",font=("Sans",12,"bold")).grid(row=0,column=0,sticky="w",pady=(0,6))
         self.adb_console=tk.Text(adb_console_panel,bg="#0b1220",fg="#d1d5db",insertbackground="white",relief="flat",wrap="word",font=(self._mono_font,9),state="disabled")
         adb_console_scroll=ttk.Scrollbar(adb_console_panel,orient="vertical",command=self.adb_console.yview); adb_console_scroll.grid(row=1,column=1,sticky="ns"); self.adb_console.configure(yscrollcommand=adb_console_scroll.set); self.adb_console.grid(row=1,column=0,sticky="nsew")
@@ -753,50 +759,62 @@ class PayloadDumperApp(TkinterDnD.Tk):
                     vars_map[key].set(value or "—")
 
     def _refresh_device_info(self):
-        """Read best-effort device identity and safety metadata for the selected target."""
+        """Query selected device metadata asynchronously to keep the UI responsive."""
         target = getattr(self, "_adb_targets", {}).get(self.adb_device.get())
         empty = {"Brand / Manufacturer": "—", "Device name / Model": "—", "Model code": "—",
-                 "Codename": "—", "Active slot": "—", "Bootloader": "—", "Battery": "—"}
+                 "Codename": "—", "Active slot": "—", "Bootloader": "—",
+                 "Android Version": "—", "Battery": "—"}
         if not target:
             self._set_device_info(empty, "NO DEVICE", "#4b5563")
+            if hasattr(self, "adb_info_loading"): self.adb_info_loading.set("")
             return
         serial, state = target
-        values = dict(empty)
-        if state == "fastboot":
-            binary = self._tool_path("fastboot.exe" if os.name == "nt" else "fastboot") or self._tool_path("fastboot")
-            mode = self._detect_fastboot_submode(binary, serial) if binary else "Fastboot"
-            values["Device name / Model"] = serial
-            values["Model code"] = self._fastboot_getvar(binary, serial, "product")
-            values["Codename"] = values["Model code"]
-            values["Active slot"] = self._fastboot_getvar(binary, serial, "current-slot")
-            unlocked = self._fastboot_getvar(binary, serial, "unlocked").lower()
-            if unlocked == "yes": values["Bootloader"] = "Unlocked"
-            elif unlocked == "no": values["Bootloader"] = "Locked"
-            values["Brand / Manufacturer"] = self._fastboot_getvar(binary, serial, "manufacturer")
-            self._set_device_info(values, "FASTBOOTD" if "Fastbootd" in mode else "FASTBOOT",
-                                  "#2563eb" if "Fastbootd" in mode else "#ea580c")
-            return
-        adb = self._tool_path("adb.exe" if os.name == "nt" else "adb") or self._tool_path("adb")
-        adb_state = state.split(":", 1)[1] if state.startswith("adb:") else state
-        mode, color = {"device": ("ADB", "#16a34a"), "recovery": ("RECOVERY", "#ca8a04"),
-                       "sideload": ("SIDELOAD", "#ca8a04"), "unauthorized": ("ADB UNAUTHORIZED", "#ca8a04"),
-                       "offline": ("ADB OFFLINE", "#ca8a04")}.get(adb_state, ("ADB", "#16a34a"))
-        if adb:
-            def prop(name):
-                return self._adb_read_value(adb, serial, ["shell", "getprop", name])
-            values["Brand / Manufacturer"] = prop("ro.product.manufacturer") or prop("ro.product.brand")
-            values["Device name / Model"] = prop("ro.product.marketname") or prop("ro.product.model")
-            values["Model code"] = prop("ro.product.name") or prop("ro.product.model")
-            values["Codename"] = prop("ro.product.device") or prop("ro.build.product")
-            values["Active slot"] = prop("ro.boot.slot_suffix") or prop("ro.boot.slot")
-            locked = (prop("ro.boot.flash.locked") or prop("ro.boot.vbmeta.device_state")).lower()
-            values["Bootloader"] = {"0": "Unlocked", "1": "Locked", "unlocked": "Unlocked",
-                                    "locked": "Locked"}.get(locked, "Unknown")
-            battery = self._adb_read_value(adb, serial, ["shell", "dumpsys", "battery"])
-            match = re.search(r"(?m)^\s*level:\s*(\d+)", battery)
-            if match:
-                values["Battery"] = match.group(1) + "%"
+        self._set_device_info(empty, "LOADING…", "#4b5563")
+        if hasattr(self, "adb_info_loading"): self.adb_info_loading.set("⟳ Reading device…")
+        request_id = getattr(self, "_device_info_request_id", 0) + 1
+        self._device_info_request_id = request_id
+        def worker():
+            values = dict(empty)
+            if state == "fastboot":
+                binary = self._tool_path("fastboot.exe" if os.name == "nt" else "fastboot") or self._tool_path("fastboot")
+                mode = self._detect_fastboot_submode(binary, serial) if binary else "Fastboot"
+                values["Device name / Model"] = serial
+                values["Model code"] = self._fastboot_getvar(binary, serial, "product")
+                values["Codename"] = values["Model code"]
+                values["Active slot"] = self._fastboot_getvar(binary, serial, "current-slot")
+                unlocked = self._fastboot_getvar(binary, serial, "unlocked").lower()
+                values["Bootloader"] = {"yes": "Unlocked", "no": "Locked"}.get(unlocked, "Unknown")
+                values["Brand / Manufacturer"] = self._fastboot_getvar(binary, serial, "manufacturer")
+                result = (values, "FASTBOOTD" if "Fastbootd" in mode else "FASTBOOT",
+                          "#2563eb" if "Fastbootd" in mode else "#ea580c")
+            else:
+                adb = self._tool_path("adb.exe" if os.name == "nt" else "adb") or self._tool_path("adb")
+                adb_state = state.split(":", 1)[1] if state.startswith("adb:") else state
+                mode, color = {"device": ("ADB", "#16a34a"), "recovery": ("RECOVERY", "#ca8a04"),
+                               "sideload": ("SIDELOAD", "#ca8a04"), "unauthorized": ("ADB UNAUTHORIZED", "#ca8a04"),
+                               "offline": ("ADB OFFLINE", "#ca8a04")}.get(adb_state, ("ADB", "#16a34a"))
+                if adb:
+                    def prop(name):
+                        return self._adb_read_value(adb, serial, ["shell", "getprop", name])
+                    values["Brand / Manufacturer"] = prop("ro.product.manufacturer") or prop("ro.product.brand")
+                    values["Device name / Model"] = prop("ro.product.marketname") or prop("ro.product.model")
+                    values["Model code"] = prop("ro.product.name") or prop("ro.product.model")
+                    values["Codename"] = prop("ro.product.device") or prop("ro.build.product")
+                    values["Active slot"] = prop("ro.boot.slot_suffix") or prop("ro.boot.slot")
+                    values["Android Version"] = prop("ro.build.version.release") or "Unknown"
+                    battery = self._adb_read_value(adb, serial, ["shell", "dumpsys", "battery"])
+                    match = re.search(r"(?m)^\s*level:\s*(\d+)", battery)
+                    if match: values["Battery"] = match.group(1) + "%"
+                result = (values, mode, color)
+            try: self.after(0, lambda: self._apply_device_info_result(request_id, result))
+            except (RuntimeError, tk.TclError): pass
+        threading.Thread(target=worker, name="DroidLab-DeviceInfo", daemon=True).start()
+
+    def _apply_device_info_result(self, request_id, result):
+        if request_id != getattr(self, "_device_info_request_id", None): return
+        values, mode, color = result
         self._set_device_info(values, mode, color)
+        if hasattr(self, "adb_info_loading"): self.adb_info_loading.set("")
 
     def _adb_read_value(self, binary, serial, args):
         try:
