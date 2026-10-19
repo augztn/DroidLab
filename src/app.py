@@ -414,7 +414,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
                  font=(font, 10, "bold")).pack(side="left", padx=(0, 6))
         self.header_status_label = tk.Label(status_card, textvariable=self.status,
                  bg="#1E222D", fg="#F3F4F6", font=(font, 9, "bold"),
-                 wraplength=420, justify="left")
+                 wraplength=0, justify="left")
         self.header_status_label.pack(side="left")
 
         notebook=ttk.Notebook(self); notebook.pack(fill="both",expand=True,padx=6,pady=6)
@@ -593,8 +593,11 @@ class PayloadDumperApp(TkinterDnD.Tk):
             partition, textvariable=self.flash_partition,
             values=("boot", "vendor", "vendor_boot", "init_boot", "dtbo", "vbmeta", "recovery",
                     "system", "product", "odm", "system_ext", "vbmeta_system", "vbmeta_vendor"),
-            state="normal")
-        self.partition_combo.pack(fill="x", pady=(5, 0))
+            state="readonly", width=24)
+        self.partition_combo.pack(anchor="w", pady=(5, 0))
+        # Prevent accidental wheel/touchpad scrolling from silently changing the target partition.
+        for _wheel_event in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.partition_combo.bind(_wheel_event, lambda _event: "break")
 
         preview = ttk.Frame(controls, style="Panel.TFrame", padding=12)
         preview.grid(row=3, column=0, sticky="ew", pady=(0, 8))
@@ -712,7 +715,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.device_mode_status = tk.StringVar(value="MODE DETECTOR: Waiting for device scan")
         ttk.Label(device,textvariable=self.device_mode_status,background="#1f2937",foreground="#86efac",
                   wraplength=1000,font=("Sans",10,"bold")).pack(anchor="w",pady=(6,0))
-        ttk.Label(device,textvariable=self.adb_device_status,background="#1f2937",foreground="#cbd5e1",wraplength=650).pack(anchor="w",pady=(2,0))
+        ttk.Label(device,textvariable=self.adb_device_status,background="#1E222D",foreground="#94A3B8",wraplength=650).pack(anchor="w",pady=(2,0))
         # Controls remain on the left; device info and an expanded console share the right column.
         workspace=ttk.Frame(tab); workspace.grid(row=3,column=0,sticky="nsew"); workspace.columnconfigure(0,weight=13,uniform="adb_workspace"); workspace.columnconfigure(1,weight=7,uniform="adb_workspace"); workspace.rowconfigure(0,weight=1)
         lower=ttk.Frame(workspace); lower.grid(row=0,column=0,sticky="nsew",padx=(0,10)); lower.columnconfigure(0,weight=1); lower.rowconfigure(2,weight=1)
@@ -781,8 +784,8 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.adb_shell_entry.bind("<Return>",lambda _event:self._run_adb_shell())
         ttk.Button(row,text="Run command",command=self._run_adb_shell,style="Primary.TButton").pack(side="left",padx=(7,0))
         self._enable_command_drop(self.adb_shell_entry,self.adb_shell_command,"adb")
-        ttk.Label(shell,text="Tip: Enter device-shell commands (dumpsys battery) OR host commands (adb devices, adb reboot recovery). Do not type adb commands into the Android shell itself.",
-                  background="#1f2937",foreground="#cbd5e1",wraplength=1100,justify="left").grid(row=3,column=0,sticky="w",pady=(5,0))
+        ttk.Label(shell,text="Device shell: dumpsys battery  ·  Use ADB controls for host-side commands.",
+                  background="#1E222D",foreground="#94A3B8",wraplength=900,justify="left").grid(row=3,column=0,sticky="w",pady=(4,0))
         self.adb_output=tk.Text(shell,height=7,bg="#0b1220",fg="#d1d5db",insertbackground="white",relief="flat",wrap="word",font=("Monospace",10)); self.adb_output.grid(row=2,column=0,sticky="nsew")
         self.adb_output.insert("end","Select a device, then run dumpsys battery or another trusted shell command.\n"); self.adb_output.configure(state="disabled")
         self.adb_log_process = None
