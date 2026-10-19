@@ -9,29 +9,9 @@ on:
 
 permissions:
   contents: write
-  actions: write
 
 jobs:
-  cleanup-artifacts:
-    name: Free old Actions artifact storage
-    runs-on: ubuntu-latest
-    steps:
-      - name: Delete previous workflow artifacts
-        if: github.event_name != 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $artifactIds = gh api --paginate "repos/$env:GITHUB_REPOSITORY/actions/artifacts?per_page=100" --jq ".artifacts[].id"
-          foreach ($artifactId in $artifactIds) {
-            if ($artifactId) {
-              gh api --method DELETE "repos/$env:GITHUB_REPOSITORY/actions/artifacts/$artifactId"
-            }
-          }
-
   windows:
-    needs: cleanup-artifacts
     name: Windows ${{ matrix.label }}
     strategy:
       fail-fast: false
@@ -67,11 +47,15 @@ jobs:
         env:
           PYTHONPATH: .
         run: python -m unittest discover -s tests -v
+
+      # Package distributable ZIPs only for version tags. Normal pushes and PRs
+      # test the code without creating/uploading downloadable build artifacts.
       - name: Build portable Windows executable and backend
+        if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $version = if ($env:GITHUB_REF -like "refs/tags/v*") { $env:GITHUB_REF_NAME.Substring(1) } else { "0.1.0-ci.$env:GITHUB_RUN_NUMBER" }
+          $version = $env:GITHUB_REF_NAME.Substring(1)
           $bundle = "dist\DroidLab-$version-windows-${{ matrix.arch }}"
           python -m PyInstaller --noconfirm --clean --onefile --windowed --name DroidLab --distpath "$PWD\build\pyinstaller-dist" --workpath "$PWD\build\pyinstaller-work" --specpath "$PWD\build" --paths src --hidden-import=payload_dumper --hidden-import=tkinter.ttk --collect-all tkinterdnd2 src/app.py
           New-Item -ItemType Directory -Force -Path "$bundle\bin" | Out-Null
@@ -85,9 +69,6 @@ jobs:
           $backend = Get-ChildItem "$env:RUNNER_TEMP\payload-backend" -Recurse -File | Where-Object { $_.Name -eq "payload-dumper-go.exe" -or $_.Name -eq "payload-dumper-go" } | Select-Object -First 1
           if (-not $backend) { throw "payload-dumper-go executable not found in Windows release archive for ${{ matrix.arch }}" }
           Copy-Item $backend.FullName "$bundle\bin\payload-dumper-go.exe"
-          # Bundle Google's Windows platform-tools where the OS architecture supports them.
-          # ARM64 Windows can run the official x64 tools under emulation; 32-bit Windows support
-          # depends on the architecture of the upstream platform-tools package.
           $platformToolsZip = "$env:RUNNER_TEMP\platform-tools.zip"
           Invoke-WebRequest -Uri "https://dl.google.com/android/repository/platform-tools-latest-windows.zip" -OutFile $platformToolsZip
           Expand-Archive -Path $platformToolsZip -DestinationPath "$env:RUNNER_TEMP\android-tools" -Force
@@ -109,14 +90,14 @@ jobs:
           ADB and Fastboot are bundled when compatible platform-tools binaries are available; otherwise install matching Android SDK Platform-Tools and add adb.exe and fastboot.exe to PATH.
           "@ | Set-Content "$bundle\README-Windows.txt"
           Compress-Archive -Path $bundle -DestinationPath "${bundle}.zip" -Force
+
       - name: Share Windows ZIP to Telegram
-        if: github.event_name != 'pull_request'
+        if: startsWith(github.ref, 'refs/tags/v')
+        continue-on-error: true
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           GITHUB_RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
-          GITHUB_REF: ${{ github.ref }}
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -126,10 +107,9 @@ jobs:
           }
           $zip = Get-ChildItem "dist\DroidLab-*-windows-${{ matrix.arch }}.zip" | Select-Object -First 1
           if (-not $zip) { throw "Windows ZIP not found for Telegram upload." }
-          $caption = "DroidLab for Windows (${{ matrix.arch }})`nBuild: $env:GITHUB_RUN_NUMBER"
+          $caption = "DroidLab for Windows (${{ matrix.arch }})`nRelease: $env:GITHUB_REF_NAME"
           if ($zip.Length -gt 50MB) {
-            $link = if ($env:GITHUB_REF -like "refs/tags/v*") { $env:GITHUB_RELEASE_URL } else { $env:GITHUB_RUN_URL }
-            $message = "$caption`nZIP exceeds Telegram Bot API's 50 MB limit. Download it here: $link"
+            $message = "$caption`nZIP exceeds Telegram Bot API's 50 MB limit. Download it here: $env:GITHUB_RELEASE_URL"
             & curl.exe --fail-with-body --silent --show-error -X POST "https://api.telegram.org/bot$env:TELEGRAM_BOT_TOKEN/sendMessage" -F "chat_id=$env:TELEGRAM_CHAT_ID" --form-string "text=$message"
             if ($LASTEXITCODE -ne 0) { throw "Telegram notification failed." }
             Write-Host "ZIP exceeds 50 MB; sent Telegram message with download link instead."
@@ -138,14 +118,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Telegram ZIP upload failed." }
             Write-Host "Windows ZIP uploaded to Telegram."
           }
-      - name: Upload portable Windows bundle
-        if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
-        with:
-          name: droidlab-windows-${{ matrix.arch }}
-          path: dist/DroidLab-*-windows-${{ matrix.arch }}.zip
-          if-no-files-found: error
-          retention-days: 1
+
       - name: Publish Windows release asset
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
