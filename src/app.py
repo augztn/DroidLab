@@ -1575,7 +1575,12 @@ class PayloadDumperApp(TkinterDnD.Tk):
                                   state="normal", readonlybackground="#0D1117")
         command_entry.insert(0, rendered_command)
         command_entry.configure(state="readonly")
-        command_entry.pack(fill="x", ipady=3)
+        command_entry.grid(row=0, column=0, sticky="ew", ipady=3)
+        command_scroll = ttk.Scrollbar(command_box, orient="horizontal",
+                                        command=command_entry.xview)
+        command_scroll.grid(row=1, column=0, sticky="ew", pady=(5, 0))
+        command_entry.configure(xscrollcommand=command_scroll.set)
+        command_box.columnconfigure(0, weight=1)
 
         warning = tk.Frame(body, bg="#2B2113", highlightthickness=1,
                            highlightbackground="#6B4F1D", padx=10, pady=8)
