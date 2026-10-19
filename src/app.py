@@ -407,6 +407,35 @@ class PayloadDumperApp(TkinterDnD.Tk):
                  font=(font, 15, "bold")).pack(side="left", anchor="center")
         tk.Label(brand_text, text="Android firmware toolkit  ·  Extract · Diagnose · Maintain",
                  bg="#161922", fg="#94A3B8", font=(font, 9)).pack(side="left", anchor="center", padx=(12, 0))
+        # Compact app-wide device telemetry in the navigation header.
+        telemetry = tk.Frame(app_header, bg="#161B22", padx=10, pady=2,
+                             highlightthickness=1, highlightbackground="#30363D")
+        telemetry.pack(side="right", padx=(8, 0), anchor="center")
+        self.header_device_vars = {name: tk.StringVar(value="—") for name in ("mode", "serial", "codename", "bootloader")}
+        self.header_device_vars["mode"].set("NO DEVICE")
+        self.header_mode_label = tk.Label(telemetry, textvariable=self.header_device_vars["mode"],
+            bg="#161B22", fg="#F97316", font=(self._ui_font, 8, "bold"))
+        self.header_mode_label.pack(side="left", padx=(0, 9))
+        for label, key in (("DEVICE", "serial"), ("CODENAME", "codename")):
+            tk.Label(telemetry, text=label, bg="#161B22", fg="#8B949E",
+                     font=(self._ui_font, 7, "bold")).pack(side="left", padx=(0, 3))
+            tk.Label(telemetry, textvariable=self.header_device_vars[key], bg="#161B22",
+                     fg="#E6EDF3", font=(self._mono_font, 8)).pack(side="left", padx=(0, 8))
+        tk.Label(telemetry, text="SLOT", bg="#161B22", fg="#8B949E",
+                 font=(self._ui_font, 7, "bold")).pack(side="left", padx=(0, 4))
+        self.header_slot_buttons = {}
+        for slot in ("a", "b"):
+            button = tk.Button(telemetry, text=slot.upper(), command=lambda value=slot: self._set_active_slot(value),
+                bg="#30363D", fg="#E6EDF3", activebackground="#2563EB", activeforeground="#FFFFFF",
+                relief="flat", bd=0, padx=6, pady=1, font=(self._ui_font, 8, "bold"),
+                cursor="hand2", state="disabled")
+            button.pack(side="left", padx=(0, 2))
+            self.header_slot_buttons[slot] = button
+        self.header_bootloader_label = tk.Label(telemetry, textvariable=self.header_device_vars["bootloader"],
+            bg="#161B22", fg="#F59E0B", font=(self._ui_font, 8, "bold"))
+        self.header_bootloader_label.pack(side="left", padx=(5, 0))
+        self.header_telemetry = telemetry
+
         status_card = tk.Frame(app_header, bg="#1E222D", padx=10, pady=5,
                               highlightthickness=1, highlightbackground="#2A3040")
         status_card.pack(side="right", padx=(12, 0), anchor="center")
@@ -670,24 +699,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         right.columnconfigure(0, weight=1)
         right.rowconfigure(1, weight=1)
 
-        info = ttk.Frame(right, style="Panel.TFrame", padding=5)
-        info.grid(row=0, column=0, sticky="ew", pady=(0, 5))
-        info.columnconfigure(1, weight=1)
-        self.device_info_mode_label = tk.Label(info, textvariable=self.device_info_mode,
-            bg="#B45309", fg="#FFFFFF", padx=7, pady=2, font=("Sans", 8, "bold"))
-        self.device_info_mode_label.grid(row=0, column=0, sticky="w", padx=(0, 8))
-        fastboot_fields = (("Device", "Device name / Model"), ("Codename", "Codename"),
-                           ("Slot", "Active slot"), ("Bootloader", "Bootloader"), ("Battery", "Battery"))
-        for col, (label, key) in enumerate(fastboot_fields, start=1):
-            cell = ttk.Frame(info, style="Panel.TFrame")
-            cell.grid(row=0, column=col, sticky="w", padx=(0, 10))
-            ttk.Label(cell, text=label.upper(), background="#1E222D", foreground="#8B949E",
-                      font=("Sans", 8, "bold")).pack(side="left", padx=(0, 4))
-            var = tk.StringVar(value="—")
-            self.device_info_vars[key] = var
-            ttk.Label(cell, textvariable=var, background="#1E222D", foreground="#E6EDF3",
-                      font=(self._mono_font, 9)).pack(side="left")
-
+        # Telemetry moved to the app header; the live console fills the right pane.
         console_panel = ttk.Frame(right, style="Panel.TFrame", padding=2)
         console_panel.grid(row=1, column=0, sticky="nsew")
         ttk.Label(console_panel, text="REAL-TIME CONSOLE / ACTIVITY", background="#1f2937",
@@ -900,6 +912,29 @@ class PayloadDumperApp(TkinterDnD.Tk):
                 if key in vars_map:
                     vars_map[key].set(value or "—")
 
+        header_vars = getattr(self, "header_device_vars", {})
+        targets = getattr(self, "_adb_targets", {})
+        selected = targets.get(getattr(self, "adb_device", tk.StringVar()).get())
+        serial = selected[0] if selected else ""
+        is_fastboot = bool(selected and selected[1] == "fastboot")
+        if header_vars:
+            header_vars["mode"].set("FASTBOOT" if is_fastboot and "Fastbootd" not in mode else
+                                    ("FASTBOOTD" if is_fastboot else (mode if selected else "NO DEVICE")))
+            header_vars["serial"].set(serial or "—")
+            header_vars["codename"].set(values.get("Codename") or values.get("Model code") or "—")
+            bootloader = values.get("Bootloader") or "—"
+            header_vars["bootloader"].set(bootloader.upper() if bootloader != "—" else "—")
+            self.header_mode_label.configure(fg="#F97316" if is_fastboot else "#8B949E")
+            boot_color = "#22C55E" if bootloader.lower() == "unlocked" else (
+                "#EF4444" if bootloader.lower() == "locked" else "#F59E0B")
+            self.header_bootloader_label.configure(fg=boot_color)
+            slot = (values.get("Active slot") or "").strip().lower().replace("_", "")
+            slot = slot[-1:] if slot.endswith(("a", "b")) else slot
+            for name, button in self.header_slot_buttons.items():
+                button.configure(state="normal" if is_fastboot else "disabled",
+                                 bg="#2563EB" if is_fastboot and slot == name else "#30363D",
+                                 fg="#FFFFFF" if is_fastboot and slot == name else "#8B949E")
+
     def _refresh_device_info(self):
         """Query selected device metadata asynchronously to keep the UI responsive."""
         target = getattr(self, "_adb_targets", {}).get(self.adb_device.get())
@@ -957,6 +992,60 @@ class PayloadDumperApp(TkinterDnD.Tk):
         values, mode, color = result
         self._set_device_info(values, mode, color)
         if hasattr(self, "adb_info_loading"): self.adb_info_loading.set("")
+
+    def _set_active_slot(self, slot):
+        """Switch the selected Fastboot device's active slot with a legacy fallback."""
+        slot = str(slot).lower()
+        if slot not in ("a", "b"):
+            return
+        serial = self.fastboot_device.get().strip()
+        binary = self._tool_path("fastboot.exe" if os.name == "nt" else "fastboot") or self._tool_path("fastboot")
+        if not serial or not binary:
+            self._console_write(self.fastboot_console, "[DroidLab] Select a Fastboot device before changing slots.\n")
+            return
+        selected = getattr(self, "_adb_targets", {}).get(self.adb_device.get())
+        if selected and selected[1] != "fastboot":
+            self._console_write(self.fastboot_console, "[DroidLab] Slot switching is only available in Fastboot mode.\n")
+            return
+        for button in self.header_slot_buttons.values():
+            button.configure(state="disabled")
+
+        def worker():
+            commands = ([binary, "-s", serial, "--set-active=" + slot],
+                        [binary, "-s", serial, "set_active", slot])
+            lines = [f"[DroidLab] Request active slot {slot.upper()} on {serial}."]
+            success = False
+            for index, command in enumerate(commands):
+                rendered = " ".join(shlex.quote(part) for part in command)
+                lines.append("$ " + rendered)
+                try:
+                    result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8",
+                        errors="replace", timeout=12, check=False, **_windows_process_options())
+                    output = ((result.stdout or "") + (result.stderr or "")).strip()
+                    lines.append(output or f"(no output; exit code {result.returncode})")
+                    if result.returncode == 0:
+                        success = True
+                        break
+                    if index == 0:
+                        lines.append("Primary syntax failed; trying legacy set_active syntax.")
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    lines.append("ERROR: " + str(exc))
+                    if index == 0:
+                        lines.append("Trying legacy set_active syntax.")
+            lines.append("[DroidLab] Slot switch " + ("succeeded." if success else "failed."))
+            def finish():
+                for line in lines:
+                    self._console_write(self.fastboot_console, line + "\n")
+                if success:
+                    self._refresh_device_info()
+                else:
+                    for button in self.header_slot_buttons.values():
+                        button.configure(state="normal")
+            try:
+                self.after(0, finish)
+            except (RuntimeError, tk.TclError):
+                pass
+        threading.Thread(target=worker, name="DroidLab-SetActiveSlot", daemon=True).start()
 
     def _adb_read_value(self, binary, serial, args):
         try:
