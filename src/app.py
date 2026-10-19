@@ -595,9 +595,13 @@ class PayloadDumperApp(TkinterDnD.Tk):
                     "system", "product", "odm", "system_ext", "vbmeta_system", "vbmeta_vendor"),
             state="readonly", width=24)
         self.partition_combo.pack(anchor="w", pady=(5, 0))
-        # Prevent accidental wheel/touchpad scrolling from silently changing the target partition.
-        for _wheel_event in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
-            self.partition_combo.bind(_wheel_event, lambda _event: "break")
+        # The partition must only change through an explicit dropdown selection.
+        # Ignore wheel/trackpad events so scrolling the page cannot change the flash target.
+        def _block_partition_wheel(_event):
+            return "break"
+        for _wheel_event in ("<MouseWheel>", "<Shift-MouseWheel>", "<Button-4>", "<Button-5>",
+                             "<Button-6>", "<Button-7>"):
+            self.partition_combo.bind(_wheel_event, _block_partition_wheel)
 
         preview = ttk.Frame(controls, style="Panel.TFrame", padding=12)
         preview.grid(row=3, column=0, sticky="ew", pady=(0, 8))
