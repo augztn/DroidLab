@@ -1667,10 +1667,10 @@ class PayloadDumperApp(TkinterDnD.Tk):
         try:self.events.put(("parts",inspect_source(src,progress=lambda x:self.events.put(("log",x)))));self.events.put(("info_done","Inspection complete."))
         except BackendError as e:self.events.put(("error",str(e)))
     def _load_parts(self,parts):
-        for i in self.tree.get_children():self.tree.delete(i)
         self.parts.clear();self.part_vars.clear()
         for part in parts:
-            n=str(part["name"]);self.parts[n]=part;self.part_vars[n]=tk.BooleanVar(value=False);self.tree.insert("","end",iid=n,text="☐  "+n,values=(self._size(int(part.get("size_bytes") or 0)),))
+            n=str(part["name"]);self.parts[n]=part;self.part_vars[n]=tk.BooleanVar(value=False)
+        self._refresh_partition_tree()
         self._append(f"Found {len(parts)} partitions.")
     @staticmethod
     def _size(n):
@@ -1678,12 +1678,37 @@ class PayloadDumperApp(TkinterDnD.Tk):
         for unit in ("B","KB","MB","GB","TB"):
             if v<1024 or unit=="TB":return f"{v:.1f} {unit}"
             v/=1024
+    def _refresh_partition_tree(self):
+        if not hasattr(self, "tree"):
+            return
+        query = self.partition_filter.get().strip().casefold() if hasattr(self, "partition_filter") else ""
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        for name, part in self.parts.items():
+            if query and query not in name.casefold():
+                continue
+            selected = self.part_vars[name].get()
+            self.tree.insert("", "end", iid=name, text=("☑  " if selected else "☐  ") + name,
+                             values=(self._size(int(part.get("size_bytes") or 0)),))
+        self._update_partition_summary()
+    def _update_partition_summary(self):
+        if not hasattr(self, "partition_summary"):
+            return
+        total = len(self.parts)
+        selected = [name for name, var in self.part_vars.items() if var.get()]
+        selected_bytes = sum(int(self.parts[name].get("size_bytes") or 0) for name in selected)
+        visible = len(self.tree.get_children())
+        self.partition_summary.set(f"{visible}/{total} shown · {len(selected)} selected · {self._size(selected_bytes)} selected")
     def _toggle(self,event):
         n=self.tree.identify_row(event.y)
         if n not in self.part_vars:return
-        v=not self.part_vars[n].get();self.part_vars[n].set(v);self.tree.item(n,text=("☑  " if v else "☐  ")+n);return "break"
+        v=not self.part_vars[n].get();self.part_vars[n].set(v);self.tree.item(n,text=("☑  " if v else "☐  ")+n);self._update_partition_summary();return "break"
     def _select_all(self,yes):
-        for n,var in self.part_vars.items():var.set(yes);self.tree.item(n,text=("☑  " if yes else "☐  ")+n)
+        query = self.partition_filter.get().strip().casefold()
+        for n,var in self.part_vars.items():
+            if not query or query in n.casefold():
+                var.set(yes)
+        self._refresh_partition_tree()
     def _start(self):
         if self.worker and self.worker.is_alive():return
         src=self.source.get().strip();out=self.output.get().strip()
