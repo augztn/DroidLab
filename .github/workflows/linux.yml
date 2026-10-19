@@ -31,9 +31,9 @@ jobs:
           python -m PyInstaller --noconfirm --clean --onefile --windowed --name droidlab-gui --distpath /tmp/pyinstaller-dist --workpath /tmp/pyinstaller-build --specpath /tmp --paths src --hidden-import=payload_dumper --hidden-import=tkinter.ttk --collect-all tkinterdnd2 src/app.py
           test -x /tmp/pyinstaller-dist/droidlab-gui
 
-  # Build and smoke-test the AppImage, and make non-release test builds downloadable.
+  # Build and smoke-test the AppImage on PRs too, and make non-release test builds downloadable.
   appimage:
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-22.04
     permissions:
       contents: write
