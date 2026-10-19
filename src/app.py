@@ -910,6 +910,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         # Use the same asynchronous streaming runner as manual commands so the
         # command, stdout/stderr, errors, and exit status appear in the live console.
         self.adb_device_status.set(title + " in progress…")
+        self._rescan_after_mode_change = True
         threading.Thread(target=self._adb_task, args=(command, 35, kind), daemon=True).start()
 
     def _enable_sideload_drop(self, widget):
@@ -1662,6 +1663,12 @@ class PayloadDumperApp(TkinterDnD.Tk):
                             messagebox.showinfo("Bugreport complete","Saved archive ("+str(Path(report_path).stat().st_size)+" bytes):\n"+report_path+"\n\nBugreports may contain sensitive device data.")
                         elif code==0: messagebox.showwarning("Bugreport status","ADB returned success, but the expected archive was not found. Check output:\n"+output)
                         else: messagebox.showerror("Bugreport failed",output)
+                    elif kind_name in ("adb_reboot", "fastboot_reboot", "fastboot_manual") and getattr(self, "_rescan_after_mode_change", False):
+                        # Reboot commands disconnect USB before the new mode becomes visible.
+                        # Retry device discovery rather than leaving a stale serial selected.
+                        self._rescan_after_mode_change = False
+                        for delay in (1800, 4000, 7500, 12000):
+                            self.after(delay, self._refresh_adb_devices)
                     elif kind_name=="sideload":
                         if code==0:messagebox.showinfo("Sideload complete","ADB reported that the sideload command completed.")
                         else:messagebox.showerror("Sideload failed",output)
