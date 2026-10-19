@@ -1501,10 +1501,129 @@ class PayloadDumperApp(TkinterDnD.Tk):
         if not re.fullmatch(r"[A-Za-z0-9_.-]+", part): messagebox.showerror("Invalid partition", "Enter a valid partition name."); return
         if not serial: messagebox.showwarning("Select device", "Refresh devices and select exactly one Fastboot device."); return
         command = [binary, "-s", serial, "flash", part, str(image.resolve())]
-        detail = "Device: " + serial + "\nImage: " + str(image.resolve()) + "\nPartition: " + part + "\nCommand: " + " ".join(shlex.quote(x) for x in command) + "\n\nWrong or incompatible images can make the device unbootable. Verify this image is for this exact device and partition. Continue?"
-        if not messagebox.askyesno("Confirm flashing", detail, icon="warning"): self._append("Flash cancelled before execution."); return
+        rendered_command = " ".join(shlex.quote(x) for x in command)
+        if not self._confirm_flash_dialog(serial, image.resolve(), part, rendered_command):
+            self._append("Flash cancelled before execution.")
+            return
         self._append("Executing: " + " ".join(shlex.quote(x) for x in command)); self.status.set("Flashing image…"); self.update_idletasks()
         threading.Thread(target=self._adb_task, args=(command, 900, "fastboot_flash"), daemon=True).start()
+    def _confirm_flash_dialog(self, serial, image, partition, rendered_command):
+        """Show a compact, bounded confirmation dialog before any Fastboot flash."""
+        dialog = tk.Toplevel(self)
+        dialog.title("Confirm flashing")
+        dialog.configure(bg="#0F1117")
+        dialog.transient(self)
+        dialog.resizable(False, False)
+        dialog.withdraw()
+
+        surface = "#161B22"
+        border = "#30363D"
+        text = "#E6EDF3"
+        muted = "#8B949E"
+        mono = getattr(self, "_mono_font", "Consolas")
+        body = tk.Frame(dialog, bg="#0F1117", padx=18, pady=16)
+        body.pack(fill="both", expand=True)
+
+        heading = tk.Frame(body, bg="#0F1117")
+        heading.pack(fill="x", pady=(0, 14))
+        tk.Label(heading, text="⚠  Confirm flashing", bg="#0F1117", fg=text,
+                 font=("Sans", 15, "bold")).pack(side="left")
+        tk.Label(heading, text="VERIFY TARGET", bg="#3B2F16", fg="#FBBF24",
+                 padx=8, pady=3, font=("Sans", 8, "bold")).pack(side="right")
+
+        details = tk.Frame(body, bg=surface, highlightthickness=1, highlightbackground=border,
+                           padx=12, pady=10)
+        details.pack(fill="x")
+
+        def detail_row(row, label, value, *, value_font=None, value_color=text):
+            tk.Label(details, text=label.upper(), bg=surface, fg=muted,
+                     font=("Sans", 8, "bold"), anchor="w").grid(
+                         row=row, column=0, sticky="nw", padx=(0, 16), pady=5)
+            tk.Label(details, text=value, bg=surface, fg=value_color,
+                     font=value_font or ("Sans", 10, "normal"), anchor="w",
+                     justify="left", wraplength=420).grid(
+                         row=row, column=1, sticky="ew", pady=5)
+
+        details.columnconfigure(1, weight=1)
+        detail_row(0, "Device", serial, value_font=(mono, 10, "bold"))
+        tk.Label(details, text="TARGET PARTITION", bg=surface, fg=muted,
+                 font=("Sans", 8, "bold"), anchor="w").grid(
+                     row=1, column=0, sticky="w", padx=(0, 16), pady=5)
+        tk.Label(details, text="[" + partition + "]", bg="#3B2F16", fg="#FBBF24",
+                 padx=7, pady=3, font=(mono, 10, "bold")).grid(
+                     row=1, column=1, sticky="w", pady=5)
+        detail_row(2, "File name", image.name, value_font=(mono, 10, "bold"))
+
+        tk.Label(details, text="FULL PATH", bg=surface, fg=muted,
+                 font=("Sans", 8, "bold"), anchor="w").grid(
+                     row=3, column=0, sticky="nw", padx=(0, 16), pady=5)
+        path_entry = tk.Entry(details, bg="#0D1117", fg=muted, insertbackground=text,
+                              readonlybackground="#0D1117", relief="flat",
+                              font=(mono, 9), state="readonly")
+        path_entry.configure(state="normal")
+        path_entry.insert(0, str(image))
+        path_entry.configure(state="readonly")
+        path_entry.grid(row=3, column=1, sticky="ew", pady=5, ipady=5)
+
+        tk.Label(body, text="COMMAND PREVIEW", bg="#0F1117", fg=muted,
+                 font=("Sans", 8, "bold")).pack(anchor="w", pady=(12, 5))
+        command_box = tk.Frame(body, bg="#0D1117", highlightthickness=1,
+                               highlightbackground=border, padx=8, pady=7)
+        command_box.pack(fill="x")
+        command_entry = tk.Entry(command_box, bg="#0D1117", fg="#93C5FD",
+                                  insertbackground=text, relief="flat", font=(mono, 9),
+                                  state="normal", readonlybackground="#0D1117")
+        command_entry.insert(0, rendered_command)
+        command_entry.configure(state="readonly")
+        command_entry.pack(fill="x", ipady=3)
+
+        warning = tk.Frame(body, bg="#2B2113", highlightthickness=1,
+                           highlightbackground="#6B4F1D", padx=10, pady=8)
+        warning.pack(fill="x", pady=(12, 0))
+        tk.Label(warning, text="⚠", bg="#2B2113", fg="#FBBF24",
+                 font=("Sans", 13, "bold")).pack(side="left", anchor="n", padx=(0, 9))
+        tk.Label(warning,
+                 text="An incompatible image or wrong partition can make the device unbootable. Verify the image matches this exact device and partition.",
+                 bg="#2B2113", fg="#FDE68A", font=("Sans", 9),
+                 justify="left", wraplength=440).pack(side="left", fill="x", expand=True)
+
+        actions = tk.Frame(body, bg="#0F1117")
+        actions.pack(fill="x", pady=(14, 0))
+        result = {"confirmed": False}
+
+        def close(confirmed=False):
+            result["confirmed"] = confirmed
+            try:
+                dialog.grab_release()
+            except tk.TclError:
+                pass
+            dialog.destroy()
+
+        tk.Button(actions, text="Cancel", command=lambda: close(False),
+                  bg="#30363D", fg=text, activebackground="#3B4552",
+                  activeforeground=text, relief="flat", padx=18, pady=7,
+                  font=("Sans", 10)).pack(side="right", padx=(8, 0))
+        tk.Button(actions, text="Flash Partition", command=lambda: close(True),
+                  bg="#B45309", fg="#FFFFFF", activebackground="#D97706",
+                  activeforeground="#FFFFFF", relief="flat", padx=18, pady=7,
+                  font=("Sans", 10, "bold")).pack(side="right")
+
+        dialog.bind("<Escape>", lambda _event: close(False))
+        dialog.bind("<Return>", lambda _event: close(False))
+        dialog.update_idletasks()
+        screen_w, screen_h = dialog.winfo_screenwidth(), dialog.winfo_screenheight()
+        requested_w = min(620, max(500, dialog.winfo_reqwidth()))
+        requested_h = min(dialog.winfo_reqheight(), max(360, screen_h - 100))
+        x = max(0, (screen_w - requested_w) // 2)
+        y = max(0, (screen_h - requested_h) // 2)
+        dialog.geometry(f"{requested_w}x{requested_h}+{x}+{y}")
+        dialog.minsize(500, min(300, requested_h))
+        dialog.deiconify()
+        dialog.grab_set()
+        dialog.focus_force()
+        self.wait_window(dialog)
+        return result["confirmed"]
+
     def _enable_drop(self, widget):
         """Allow files to be dropped onto the main window and source controls."""
         try:
