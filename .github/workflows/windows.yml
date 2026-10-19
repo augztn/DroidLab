@@ -8,10 +8,30 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+  actions: write
 
 jobs:
+  cleanup-artifacts:
+    name: Free old Actions artifact storage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete previous workflow artifacts
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $artifactIds = gh api --paginate "repos/$env:GITHUB_REPOSITORY/actions/artifacts?per_page=100" --jq ".artifacts[].id"
+          foreach ($artifactId in $artifactIds) {
+            if ($artifactId) {
+              gh api --method DELETE "repos/$env:GITHUB_REPOSITORY/actions/artifacts/$artifactId"
+            }
+          }
+
   windows:
+    needs: cleanup-artifacts
     name: Windows ${{ matrix.label }}
     strategy:
       fail-fast: false
@@ -88,14 +108,15 @@ jobs:
           The matching payload-dumper-go backend is bundled in the bin folder.
           ADB and Fastboot are bundled when compatible platform-tools binaries are available; otherwise install matching Android SDK Platform-Tools and add adb.exe and fastboot.exe to PATH.
           "@ | Set-Content "$bundle\README-Windows.txt"
-          Compress-Archive -Path $bundle -DestinationPath "$bundle.zip" -Force
+          Compress-Archive -Path $bundle -DestinationPath "${bundle}.zip" -Force
       - name: Upload portable Windows bundle
+        if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: droidlab-windows-${{ matrix.arch }}
           path: dist/DroidLab-*-windows-${{ matrix.arch }}.zip
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
       - name: Publish Windows release asset
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
