@@ -407,13 +407,14 @@ class PayloadDumperApp(TkinterDnD.Tk):
                  font=(font, 17, "bold")).pack(anchor="w")
         tk.Label(brand_text, text="Android firmware toolkit · Extract · Diagnose · Maintain",
                  bg="#172554", fg="#bfdbfe", font=(font, 9 if os.name == "nt" else 11)).pack(anchor="w", pady=(2, 0))
-        status_card = tk.Frame(app_header, bg="#1e293b", padx=6, pady=3)
-        status_card.pack(side="right", padx=(12, 0))
+        status_card = tk.Frame(app_header, bg="#1e293b", padx=6, pady=3, width=190)
+        status_card.pack(side="right", padx=(8, 0), fill="y")
+        status_card.pack_propagate(False)
         tk.Label(status_card, text="STATUS", bg="#1e293b", fg="#93c5fd",
                  font=(font, 8 if os.name == "nt" else 9, "bold")).pack(anchor="w")
         self.header_status_label = tk.Label(status_card, textvariable=self.status,
                  bg="#1e293b", fg="#86efac", font=(font, 10 if os.name == "nt" else 11, "bold"),
-                 wraplength=120, justify="left")
+                 wraplength=170, width=22, justify="left")
         self.header_status_label.pack(anchor="w", pady=(2, 0))
 
         notebook=ttk.Notebook(self); notebook.pack(fill="both",expand=True,padx=6,pady=6)
@@ -500,26 +501,11 @@ class PayloadDumperApp(TkinterDnD.Tk):
 
         # Device selector comes first so every later operation has a clear target.
         device = ttk.Frame(tab, style="Panel.TFrame", padding=5)
-        device.grid(row=2, column=0, sticky="ew", padx=(0, 6), pady=(0, 5))
+        device.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(0, 5))
         device.columnconfigure(0, weight=1)
-        info = ttk.Frame(tab, style="Panel.TFrame", padding=5)
-        info.grid(row=2, column=1, sticky="ew", pady=(0, 5))
-        info.columnconfigure(0, weight=1)
-        ttk.Label(info, text="DEVICE INFO", background="#1f2937", foreground="#93c5fd",
-                  font=("Sans", 11, "bold")).grid(row=0, column=0, sticky="w")
-        self.device_info_mode = tk.StringVar(value="NO DEVICE")
-        self.device_info_mode_label = tk.Label(info, textvariable=self.device_info_mode,
-            bg="#4b5563", fg="#fef3c7", padx=8, pady=3, font=("Sans", 9, "bold"))
-        self.device_info_mode_label.grid(row=0, column=1, sticky="e", padx=(4, 0))
+        # Device details live beside the console, not beside the compact device picker.
         self.device_info_vars = {}
-        for row, (key, initial) in enumerate((("Brand / Manufacturer", "—"), ("Device name / Model", "—"),
-                ("Model code", "—"), ("Codename", "—"), ("Active slot", "—"),
-                ("Bootloader", "—"), ("Battery", "—")), start=1):
-            ttk.Label(info, text=key + ":", background="#1f2937", foreground="#cbd5e1").grid(row=row, column=0, sticky="w", pady=1)
-            var = tk.StringVar(value=initial)
-            self.device_info_vars[key] = var
-            ttk.Label(info, textvariable=var, background="#1f2937", foreground="#f8fafc",
-                      wraplength=230).grid(row=row, column=1, sticky="w", padx=(8, 0), pady=1)
+        self.device_info_mode = tk.StringVar(value="NO DEVICE")
         ttk.Label(device, text="FASTBOOT DEVICE", background="#1f2937", foreground="#93c5fd",
                   font=("Sans", 10, "bold")).grid(row=0, column=0, sticky="w")
         self.fastboot_device = tk.StringVar()
@@ -648,9 +634,26 @@ class PayloadDumperApp(TkinterDnD.Tk):
         right = ttk.Frame(tab, style="Panel.TFrame", padding=5)
         right.grid(row=3, column=1, sticky="nsew")
         right.columnconfigure(0, weight=1)
-        right.rowconfigure(0, weight=1)
+        right.rowconfigure(1, weight=1)
+
+        info = ttk.Frame(right, style="Panel.TFrame", padding=5)
+        info.grid(row=0, column=0, sticky="ew", pady=(0, 5))
+        ttk.Label(info, text="DEVICE INFO", background="#1f2937", foreground="#93c5fd",
+                  font=("Sans", 10, "bold")).grid(row=0, column=0, sticky="w")
+        self.device_info_mode_label = tk.Label(info, textvariable=self.device_info_mode,
+            bg="#4b5563", fg="#fef3c7", padx=6, pady=2, font=("Sans", 8, "bold"))
+        self.device_info_mode_label.grid(row=0, column=1, sticky="e", padx=(4, 0))
+        for row, (key, initial) in enumerate((("Brand / Manufacturer", "—"), ("Device name / Model", "—"),
+                ("Model code", "—"), ("Codename", "—"), ("Active slot", "—"),
+                ("Bootloader", "—"), ("Battery", "—")), start=1):
+            ttk.Label(info, text=key + ":", background="#1f2937", foreground="#cbd5e1").grid(row=row, column=0, sticky="w", pady=0)
+            var = tk.StringVar(value=initial)
+            self.device_info_vars[key] = var
+            ttk.Label(info, textvariable=var, background="#1f2937", foreground="#f8fafc",
+                      wraplength=180).grid(row=row, column=1, sticky="w", padx=(6, 0), pady=0)
+
         console_panel = ttk.Frame(right, style="Panel.TFrame", padding=2)
-        console_panel.grid(row=0, column=0, sticky="nsew")
+        console_panel.grid(row=1, column=0, sticky="nsew")
         ttk.Label(console_panel, text="REAL-TIME CONSOLE / ACTIVITY", background="#1f2937",
                   foreground="#93c5fd", font=("Sans", 11, "bold")).pack(anchor="w", pady=(0, 5))
         fast_console_frame = ttk.Frame(console_panel, style="Panel.TFrame")
