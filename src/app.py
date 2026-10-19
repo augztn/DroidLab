@@ -404,9 +404,9 @@ class PayloadDumperApp(TkinterDnD.Tk):
         brand_text = tk.Frame(app_header, bg="#161922")
         brand_text.pack(side="left", fill="x", expand=True)
         tk.Label(brand_text, text="DroidLab", bg="#161922", fg="#F3F4F6",
-                 font=(font, 17, "bold")).pack(anchor="w")
-        tk.Label(brand_text, text="Android firmware toolkit · Extract · Diagnose · Maintain",
-                 bg="#161922", fg="#94A3B8", font=(font, 9)).pack(anchor="w", pady=(1, 0))
+                 font=(font, 15, "bold")).pack(side="left", anchor="center")
+        tk.Label(brand_text, text="Android firmware toolkit  ·  Extract · Diagnose · Maintain",
+                 bg="#161922", fg="#94A3B8", font=(font, 9)).pack(side="left", anchor="center", padx=(12, 0))
         status_card = tk.Frame(app_header, bg="#1E222D", padx=10, pady=5,
                               highlightthickness=1, highlightbackground="#2A3040")
         status_card.pack(side="right", padx=(12, 0), anchor="center")
