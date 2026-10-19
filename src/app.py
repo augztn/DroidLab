@@ -630,9 +630,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
             self.adb_device_info_vars[key] = var
             ttk.Label(adb_info, textvariable=var, background="#1f2937", foreground="#f8fafc",
                       wraplength=300).grid(row=row_idx, column=1, sticky="w", padx=(8, 0), pady=1)
-        # Two-column workspace keeps controls visible beside the live console.
-        workspace=ttk.Frame(tab); workspace.grid(row=3,column=0,sticky="nsew"); workspace.columnconfigure(0,weight=3,uniform="adb_workspace"); workspace.columnconfigure(1,weight=2,uniform="adb_workspace"); workspace.rowconfigure(0,weight=1)
-        lower=ttk.Frame(workspace); lower.grid(row=0,column=0,sticky="nsew",padx=(0,10)); lower.columnconfigure(0,weight=1); lower.rowconfigure(2,weight=1)
+        # Left-side controls were created in `lower`; keep the existing workspace and right column.
         adb_console_panel=ttk.Frame(right,style="Panel.TFrame",padding=10); adb_console_panel.grid(row=1,column=0,sticky="nsew"); adb_console_panel.rowconfigure(1,weight=1); adb_console_panel.columnconfigure(0,weight=1)
         ttk.Label(adb_console_panel,text="REAL-TIME CONSOLE / ACTIVITY",background="#1f2937",foreground="#93c5fd",font=("Sans",12,"bold")).grid(row=0,column=0,sticky="w",pady=(0,6))
         self.adb_console=tk.Text(adb_console_panel,bg="#0b1220",fg="#d1d5db",insertbackground="white",relief="flat",wrap="word",font=(self._mono_font,9),state="disabled")
