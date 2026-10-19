@@ -584,7 +584,11 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self._append("Executing Fastboot action: " + rendered)
         self._console_write(self.fastboot_console, "[DroidLab] $ " + rendered + "\n")
         self.status.set("Running Fastboot command…")
+        self._rescan_after_mode_change = True
         threading.Thread(target=self._adb_task, args=(command, 90, "fastboot_manual"), daemon=True).start()
+        # USB mode transitions are asynchronous; scan again after Android/bootloader reconnects.
+        for delay in (2000, 5000, 9000, 14000):
+            self.after(delay, self._refresh_adb_devices)
 
     def _build_adb_tab(self, tab):
         tab.columnconfigure(0, weight=1)
