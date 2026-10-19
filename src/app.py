@@ -1125,6 +1125,15 @@ class PayloadDumperApp(TkinterDnD.Tk):
         if not tokens:
             return
         first = Path(tokens[0]).name.lower()
+        # The Fastboot command field is a convenience console, but it must not
+        # run ADB commands through fastboot.exe (e.g. "adb devices"). Delegate
+        # ADB-prefixed input to the host-side ADB runner, which handles device
+        # selection, output streaming, and errors correctly.
+        if first in ("adb", "adb.exe"):
+            self.adb_shell_command.set(text)
+            self._append("Routing ADB command from Fastboot console to the host ADB runner.")
+            self._run_adb_shell()
+            return
         if first in ("fastboot", "fastboot.exe"):
             tokens = tokens[1:]
         binary = self._tool_path("fastboot.exe" if os.name == "nt" else "fastboot") or self._tool_path("fastboot")
