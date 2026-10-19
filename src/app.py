@@ -490,6 +490,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         """Build the Fastboot workspace with device-first selection and a live console."""
         tab.columnconfigure(0, weight=3, uniform="fastboot_workspace")
         tab.columnconfigure(1, weight=2, uniform="fastboot_workspace")
+        tab.rowconfigure(2, weight=0, minsize=0)
         tab.rowconfigure(3, weight=1)
 
         ttk.Label(tab, text="Fastboot & Flashing", font=("Sans", 18, "bold")).grid(
@@ -498,11 +499,11 @@ class PayloadDumperApp(TkinterDnD.Tk):
                   style="Muted.TLabel").grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 5))
 
         # Device selector comes first so every later operation has a clear target.
-        device = ttk.Frame(tab, style="Panel.TFrame", padding=10)
-        device.grid(row=2, column=0, sticky="nsew", padx=(0, 6), pady=(0, 6))
+        device = ttk.Frame(tab, style="Panel.TFrame", padding=5)
+        device.grid(row=2, column=0, sticky="ew", padx=(0, 6), pady=(0, 5))
         device.columnconfigure(0, weight=1)
-        info = ttk.Frame(tab, style="Panel.TFrame", padding=10)
-        info.grid(row=2, column=1, sticky="nsew", pady=(0, 10))
+        info = ttk.Frame(tab, style="Panel.TFrame", padding=5)
+        info.grid(row=2, column=1, sticky="ew", pady=(0, 5))
         info.columnconfigure(0, weight=1)
         ttk.Label(info, text="DEVICE INFO", background="#1f2937", foreground="#93c5fd",
                   font=("Sans", 11, "bold")).grid(row=0, column=0, sticky="w")
@@ -523,13 +524,13 @@ class PayloadDumperApp(TkinterDnD.Tk):
                   font=("Sans", 10, "bold")).grid(row=0, column=0, sticky="w")
         self.fastboot_device = tk.StringVar()
         self.device_combo = ttk.Combobox(device, textvariable=self.fastboot_device, state="readonly")
-        self.device_combo.grid(row=1, column=0, sticky="ew", pady=(5, 0))
+        self.device_combo.grid(row=1, column=0, sticky="ew", pady=(3, 0))
         ttk.Button(device, text="Refresh devices", command=self._refresh_fastboot_devices).grid(
-            row=1, column=1, padx=(8, 0), pady=(5, 0))
+            row=1, column=1, padx=(5, 0), pady=(3, 0))
 
         # Scrollable left workspace keeps every control reachable on short displays.
         left_scroll = ttk.Frame(tab)
-        left_scroll.grid(row=3, column=0, sticky="nsew", padx=(0, 10))
+        left_scroll.grid(row=3, column=0, sticky="nsew", padx=(0, 5))
         left_scroll.columnconfigure(0, weight=1)
         left_scroll.rowconfigure(0, weight=1)
         controls_canvas = tk.Canvas(left_scroll, bg="#111827", highlightthickness=0, borderwidth=0)
@@ -644,7 +645,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self._enable_command_drop(self.fastboot_manual_entry, self.fastboot_manual_command, "fastboot")
 
         # The console owns the full right workspace height for continuous output visibility.
-        right = ttk.Frame(tab, style="Panel.TFrame", padding=10)
+        right = ttk.Frame(tab, style="Panel.TFrame", padding=5)
         right.grid(row=3, column=1, sticky="nsew")
         right.columnconfigure(0, weight=1)
         right.rowconfigure(0, weight=1)
@@ -692,6 +693,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
 
     def _build_adb_tab(self, tab):
         tab.columnconfigure(0, weight=1)
+        tab.rowconfigure(2, weight=0, minsize=0)
         tab.rowconfigure(3, weight=1)
         ttk.Label(tab, text="ADB & Sideload", font=("Sans", 18, "bold")).grid(row=0, column=0, sticky="w", pady=(0, 4))
         ttk.Label(tab, text="Reboot, collect logs and diagnostics, run device shell commands, or sideload an OTA ZIP from recovery.", style="Muted.TLabel", wraplength=900).grid(row=1, column=0, sticky="w", pady=(0, 3))
