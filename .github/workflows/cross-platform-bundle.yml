@@ -1,0 +1,177 @@
+name: All-platforms bundle
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Build Windows ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: x64
+            runner: windows-2022
+            python_arch: x64
+            backend_arch: amd64
+          - label: ARM64
+            runner: windows-11-arm
+            python_arch: arm64
+            backend_arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          architecture: ${{ matrix.python_arch }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller "tkinterdnd2>=0.4.3,<1"
+      - name: Compile and test
+        env:
+          PYTHONPATH: .
+        run: |
+          python -m compileall -q src tests
+          python -m unittest discover -s tests -v
+      - name: Build portable Windows app
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ($env:GITHUB_REF -like "refs/tags/v*") { $version = $env:GITHUB_REF_NAME.Substring(1) } else { $version = "0.1.0-ci.$env:GITHUB_RUN_NUMBER" }
+          $bundle = "dist\DroidLab-$version-windows-${{ matrix.label }}"
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name DroidLab --distpath "$PWD\build\pyinstaller-dist" --workpath "$PWD\build\pyinstaller-work" --specpath "$PWD\build" --paths src --hidden-import=payload_dumper --hidden-import=tkinter.ttk --collect-all tkinterdnd2 src/app.py
+          if (-not (Test-Path "build\pyinstaller-dist\DroidLab.exe")) { throw "DroidLab.exe was not created" }
+          New-Item -ItemType Directory -Force -Path "$bundle\bin" | Out-Null
+          Copy-Item "build\pyinstaller-dist\DroidLab.exe" "$bundle\DroidLab.exe"
+          $backendVersion = "2.1.0"
+          $archive = "payload-dumper-go_$($backendVersion)_windows_${{ matrix.backend_arch }}.tar.gz"
+          Invoke-WebRequest -Uri "https://github.com/ssut/payload-dumper-go/releases/download/$backendVersion/$archive" -OutFile "$env:RUNNER_TEMP\payload-backend.tar.gz"
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\payload-backend" | Out-Null
+          tar -xzf "$env:RUNNER_TEMP\payload-backend.tar.gz" -C "$env:RUNNER_TEMP\payload-backend"
+          $backend = Get-ChildItem "$env:RUNNER_TEMP\payload-backend" -Recurse -File | Where-Object { $_.Name -eq "payload-dumper-go.exe" -or $_.Name -eq "payload-dumper-go" } | Select-Object -First 1
+          if (-not $backend) { throw "payload-dumper-go executable missing for ${{ matrix.label }}" }
+          Copy-Item $backend.FullName "$bundle\bin\payload-dumper-go.exe"
+          $platformToolsZip = "$env:RUNNER_TEMP\platform-tools.zip"
+          Invoke-WebRequest -Uri "https://dl.google.com/android/repository/platform-tools-latest-windows.zip" -OutFile $platformToolsZip
+          Expand-Archive -Path $platformToolsZip -DestinationPath "$env:RUNNER_TEMP\android-tools" -Force
+          $toolsDir = Join-Path "$env:RUNNER_TEMP\android-tools" "platform-tools"
+          if ((Test-Path "$toolsDir\adb.exe") -and (Test-Path "$toolsDir\fastboot.exe")) {
+            Copy-Item "$toolsDir\adb.exe" "$bundle\bin\adb.exe"
+            Copy-Item "$toolsDir\fastboot.exe" "$bundle\bin\fastboot.exe"
+            foreach ($dll in @("AdbWinApi.dll", "AdbWinUsbApi.dll")) { if (Test-Path "$toolsDir\$dll") { Copy-Item "$toolsDir\$dll" "$bundle\bin\$dll" } }
+          }
+          @"
+          DroidLab for Windows (${{ matrix.label }})
+          Run DroidLab.exe to start the application.
+          The payload-dumper-go backend and Android platform-tools are in the bin folder when available.
+          "@ | Set-Content "$bundle\README-Windows.txt"
+          Compress-Archive -Path $bundle -DestinationPath "$bundle.zip" -Force
+          if (-not (Test-Path "$bundle.zip")) { throw "Windows ZIP was not created" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.label }}
+          path: dist/DroidLab-*-windows-${{ matrix.label }}.zip
+          if-no-files-found: error
+          retention-days: 3
+
+  linux:
+    name: Build Linux AppImage
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk xz-utils wget file libfuse2 xvfb gir1.2-gtk-4.0 gir1.2-gtk-3.0 python3-gi
+          python -m pip install --upgrade pyinstaller "tkinterdnd2>=0.4.3,<1"
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O /tmp/appimagetool
+          chmod +x /tmp/appimagetool
+          sudo install /tmp/appimagetool /usr/local/bin/appimagetool
+      - name: Compile and test
+        run: |
+          python3 -m compileall -q src tests
+          PYTHONPATH=. python3 -m unittest discover -s tests -v
+      - name: Build AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then VERSION="${GITHUB_REF_NAME#v}"; else VERSION="0.1.0-ci.${GITHUB_RUN_NUMBER}"; fi
+          VERSION="$VERSION" bash scripts/build-linux.sh
+      - name: Smoke-test AppImage
+        run: |
+          appimage="$(find dist -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          test -n "$appimage"
+          chmod +x "$appimage"
+          set +e
+          APPIMAGE_EXTRACT_AND_RUN=1 timeout 8s xvfb-run -a "$appimage" > /tmp/appimage-smoke.log 2>&1
+          status=$?
+          set -e
+          cat /tmp/appimage-smoke.log
+          if [[ "$status" -ne 124 ]]; then echo "AppImage failed smoke test (exit $status)" >&2; exit 1; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: dist/*.AppImage
+          if-no-files-found: error
+          retention-days: 3
+
+  package:
+    name: Assemble and test one cross-platform ZIP
+    needs: [windows, linux]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: bundle-inputs
+          pattern: "*"
+          merge-multiple: false
+      - name: Assemble unified ZIP and verify contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          if [[ "$GITHUB_REF" != refs/tags/v* ]]; then version="0.1.0-ci.${GITHUB_RUN_NUMBER}"; fi
+          mkdir -p "DroidLab-$version-cross-platform"/{Windows-x64,Windows-ARM64,Linux}
+          win_x64="$(find bundle-inputs/windows-x64 -type f -name '*.zip' -print -quit)"
+          win_arm64="$(find bundle-inputs/windows-ARM64 -type f -name '*.zip' -print -quit)"
+          linux_app="$(find bundle-inputs/linux-appimage -type f -name '*.AppImage' -print -quit)"
+          test -n "$win_x64" && test -n "$win_arm64" && test -n "$linux_app"
+          cp "$win_x64" "DroidLab-$version-cross-platform/Windows-x64/"
+          cp "$win_arm64" "DroidLab-$version-cross-platform/Windows-ARM64/"
+          cp "$linux_app" "DroidLab-$version-cross-platform/Linux/"
+          cat > "DroidLab-$version-cross-platform/README.txt" <<'EOF'
+          DroidLab Cross-Platform Bundle
+          ==============================
+          Windows-x64: extract the included ZIP and run DroidLab.exe.
+          Windows-ARM64: extract the included ZIP and run DroidLab.exe on ARM64 Windows.
+          Linux: make the included AppImage executable (chmod +x *.AppImage), then run it.
+          CI validates Python compilation and unit tests on each build runner. The Linux AppImage is smoke-tested under Xvfb. Windows executables are built and checked for presence; hardware/device workflows still require testing on the target machine.
+          EOF
+          zip_name="DroidLab-$version-cross-platform.zip"
+          zip -qr "$zip_name" "DroidLab-$version-cross-platform"
+          unzip -l "$zip_name"
+          unzip -t "$zip_name"
+          test "$(unzip -Z1 "$zip_name" | grep -c '\.AppImage$')" -ge 1
+          test "$(unzip -Z1 "$zip_name" | grep -c 'windows-x64.*\.zip$')" -ge 1
+          test "$(unzip -Z1 "$zip_name" | grep -c 'windows-ARM64.*\.zip$')" -ge 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DroidLab-cross-platform-ZIP
+          path: DroidLab-*-cross-platform.zip
+          if-no-files-found: error
+          retention-days: 7
+      - name: Publish unified ZIP on version tags
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: DroidLab-*-cross-platform.zip
