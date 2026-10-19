@@ -109,6 +109,31 @@ jobs:
           ADB and Fastboot are bundled when compatible platform-tools binaries are available; otherwise install matching Android SDK Platform-Tools and add adb.exe and fastboot.exe to PATH.
           "@ | Set-Content "$bundle\README-Windows.txt"
           Compress-Archive -Path $bundle -DestinationPath "${bundle}.zip" -Force
+      - name: Share Windows ZIP to Telegram
+        if: github.event_name != 'pull_request' && secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != ''
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GITHUB_RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+          GITHUB_REF: ${{ github.ref }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $zip = Get-ChildItem "dist\DroidLab-*-windows-${{ matrix.arch }}.zip" | Select-Object -First 1
+          if (-not $zip) { throw "Windows ZIP not found for Telegram upload." }
+          $caption = "DroidLab for Windows (${{ matrix.arch }})`nBuild: $env:GITHUB_RUN_NUMBER"
+          if ($zip.Length -gt 50MB) {
+            $link = if ($env:GITHUB_REF -like "refs/tags/v*") { $env:GITHUB_RELEASE_URL } else { $env:GITHUB_RUN_URL }
+            $message = "$caption`nZIP exceeds Telegram Bot API's 50 MB limit. Download it here: $link"
+            & curl.exe --fail-with-body --silent --show-error -X POST "https://api.telegram.org/bot$env:TELEGRAM_BOT_TOKEN/sendMessage" -F "chat_id=$env:TELEGRAM_CHAT_ID" --form-string "text=$message"
+            if ($LASTEXITCODE -ne 0) { throw "Telegram notification failed." }
+            Write-Host "ZIP exceeds 50 MB; sent Telegram message with download link instead."
+          } else {
+            & curl.exe --fail-with-body --silent --show-error -X POST "https://api.telegram.org/bot$env:TELEGRAM_BOT_TOKEN/sendDocument" -F "chat_id=$env:TELEGRAM_CHAT_ID" -F "caption=$caption" -F "document=@$($zip.FullName)"
+            if ($LASTEXITCODE -ne 0) { throw "Telegram ZIP upload failed." }
+            Write-Host "Windows ZIP uploaded to Telegram."
+          }
       - name: Upload portable Windows bundle
         if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
