@@ -82,7 +82,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         # more predictably than the oversized Linux-oriented defaults.
         self.geometry("1180x760")
         self.minsize(900, 600)
-        self.configure(bg="#111827")
+        self.configure(bg="#0F1117")
         self._ui_font = "Segoe UI" if os.name == "nt" else "Sans"
         self._mono_font = "Consolas" if os.name == "nt" else "Monospace"
         self.events=queue.Queue(); self.worker=None; self.cancel_event=threading.Event()
@@ -318,7 +318,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         font = self._ui_font
         # Shared palette and control states adapted from the supplied React design.
         # Keep all styling in ttk so the native desktop build stays self-contained.
-        s.configure("TFrame", background="#111827")
+        s.configure("TFrame", background="#0F1117")
         s.configure("Panel.TFrame", background="#1f2937", relief="solid",
                     borderwidth=1, bordercolor="#374151")
         s.configure("TLabel", background="#111827", foreground="#e5e7eb",
@@ -395,18 +395,18 @@ class PayloadDumperApp(TkinterDnD.Tk):
               foreground=[("selected", "#ffffff"), ("active", "#ffffff")])
 
         # App-wide header keeps identity and current operation status visible on every tab.
-        app_header = tk.Frame(self, bg="#172554", padx=8, pady=4,
-                              highlightthickness=1, highlightbackground="#263b67")
+        app_header = tk.Frame(self, bg="#161922", padx=12, pady=7,
+                              highlightthickness=1, highlightbackground="#2A3040")
         app_header.pack(fill="x", padx=6, pady=(6, 0))
         brand_mark = tk.Label(app_header, text="DL", bg="#2563eb", fg="#ffffff",
                               font=(font, 13, "bold"), width=4, pady=7)
         brand_mark.pack(side="left", padx=(0, 12))
-        brand_text = tk.Frame(app_header, bg="#172554")
+        brand_text = tk.Frame(app_header, bg="#161922")
         brand_text.pack(side="left", fill="x", expand=True)
-        tk.Label(brand_text, text="DroidLab", bg="#172554", fg="#f8fafc",
+        tk.Label(brand_text, text="DroidLab", bg="#161922", fg="#F3F4F6",
                  font=(font, 17, "bold")).pack(anchor="w")
         tk.Label(brand_text, text="Android firmware toolkit · Extract · Diagnose · Maintain",
-                 bg="#172554", fg="#bfdbfe", font=(font, 9 if os.name == "nt" else 11)).pack(anchor="w", pady=(2, 0))
+                 bg="#161922", fg="#94A3B8", font=(font, 9)).pack(anchor="w", pady=(1, 0))
         status_card = tk.Frame(app_header, bg="#1e293b", padx=8, pady=4)
         status_card.pack(side="right", padx=(8, 0), fill="y")
         tk.Label(status_card, text="STATUS", bg="#1e293b", fg="#93c5fd",
@@ -488,14 +488,14 @@ class PayloadDumperApp(TkinterDnD.Tk):
 
     def _build_flash_tab(self, tab):
         """Build the Fastboot workspace with device-first selection and a live console."""
-        tab.columnconfigure(0, weight=1, uniform="fastboot_workspace")
-        tab.columnconfigure(1, weight=1, uniform="fastboot_workspace")
+        tab.columnconfigure(0, weight=13, uniform="fastboot_workspace")
+        tab.columnconfigure(1, weight=7, uniform="fastboot_workspace")
         tab.rowconfigure(2, weight=0, minsize=0)
         tab.rowconfigure(3, weight=1)
 
-        ttk.Label(tab, text="Fastboot & Flashing", font=("Sans", 18, "bold")).grid(
+        ttk.Label(tab, text="Fastboot & Flashing", font=(self._ui_font, 16, "bold")).grid(
             row=0, column=0, columnspan=2, sticky="w", pady=(0, 6))
-        ttk.Label(tab, text="Select the connected device first, then choose an image or maintenance action.",
+        ttk.Label(tab, text="Choose a device, then select a maintenance or flashing action.",
                   style="Muted.TLabel").grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 5))
 
         # Device selector comes first so every later operation has a clear target.
@@ -698,7 +698,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         tab.columnconfigure(0, weight=1)
         tab.rowconfigure(2, weight=0, minsize=0)
         tab.rowconfigure(3, weight=1)
-        ttk.Label(tab, text="ADB & Sideload", font=("Sans", 18, "bold")).grid(row=0, column=0, sticky="w", pady=(0, 4))
+        ttk.Label(tab, text="ADB & Sideload", font=(self._ui_font, 16, "bold")).grid(row=0, column=0, sticky="w", pady=(0, 4))
         ttk.Label(tab, text="Reboot, collect logs and diagnostics, run device shell commands, or sideload an OTA ZIP from recovery.", style="Muted.TLabel", wraplength=900).grid(row=1, column=0, sticky="w", pady=(0, 3))
         device=ttk.Frame(tab,style="Panel.TFrame",padding=6); device.grid(row=2,column=0,sticky="ew",pady=(0,6))
         ttk.Label(device,text="ADB DEVICE",background="#1f2937",foreground="#93c5fd").pack(anchor="w")
@@ -711,7 +711,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
                   wraplength=1000,font=("Sans",10,"bold")).pack(anchor="w",pady=(6,0))
         ttk.Label(device,textvariable=self.adb_device_status,background="#1f2937",foreground="#cbd5e1",wraplength=650).pack(anchor="w",pady=(2,0))
         # Controls remain on the left; device info and an expanded console share the right column.
-        workspace=ttk.Frame(tab); workspace.grid(row=3,column=0,sticky="nsew"); workspace.columnconfigure(0,weight=1,uniform="adb_workspace"); workspace.columnconfigure(1,weight=1,uniform="adb_workspace"); workspace.rowconfigure(0,weight=1)
+        workspace=ttk.Frame(tab); workspace.grid(row=3,column=0,sticky="nsew"); workspace.columnconfigure(0,weight=13,uniform="adb_workspace"); workspace.columnconfigure(1,weight=7,uniform="adb_workspace"); workspace.rowconfigure(0,weight=1)
         lower=ttk.Frame(workspace); lower.grid(row=0,column=0,sticky="nsew",padx=(0,10)); lower.columnconfigure(0,weight=1); lower.rowconfigure(2,weight=1)
         right=ttk.Frame(workspace); right.grid(row=0,column=1,sticky="nsew"); right.columnconfigure(0,weight=1); right.rowconfigure(1,weight=1)
         adb_info = ttk.Frame(right, style="Panel.TFrame", padding=6)
