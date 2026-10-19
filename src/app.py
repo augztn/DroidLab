@@ -609,8 +609,9 @@ class PayloadDumperApp(TkinterDnD.Tk):
         # Only explicit dropdown selection may change the flash target; scrolling must not.
         def _block_partition_wheel(_event):
             return "break"
-        for _wheel_event in ("<MouseWheel>", "<Shift-MouseWheel>", "<Button-4>", "<Button-5>",
-                             "<Button-6>", "<Button-7>"):
+        # X11/Tk only defines wheel buttons 4 and 5; buttons 6/7 raise
+        # TclError on Linux and prevent the frozen AppImage from starting.
+        for _wheel_event in ("<MouseWheel>", "<Shift-MouseWheel>", "<Button-4>", "<Button-5>"):
             self.partition_combo.bind(_wheel_event, _block_partition_wheel)
 
         # Row 1 / column 3: primary action, aligned with the controls.
