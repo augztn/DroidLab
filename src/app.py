@@ -81,7 +81,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         # Use a practical Windows-first size; ttk layouts and system fonts scale
         # more predictably than the oversized Linux-oriented defaults.
         self.geometry("1240x820")
-        self.minsize(900, 640)
+        self.minsize(960, 680)
         self.configure(bg="#111827")
         self._ui_font = "Segoe UI" if os.name == "nt" else "Sans"
         self._mono_font = "Consolas" if os.name == "nt" else "Monospace"
@@ -330,7 +330,36 @@ class PayloadDumperApp(TkinterDnD.Tk):
         s.configure("Treeview", background="#0b1220", fieldbackground="#0b1220", foreground="#f1f5f9", rowheight=30 if os.name == "nt" else 38, font=(font, 10 if os.name == "nt" else 12))
         s.configure("Treeview.Heading", background="#374151", foreground="#ffffff", font=(font, 10 if os.name == "nt" else 12, "bold"), padding=(7, 6))
         s.map("Treeview", background=[("selected", "#1d4ed8")], foreground=[("selected", "#ffffff")])
-        notebook=ttk.Notebook(self); notebook.pack(fill="both",expand=True,padx=8,pady=8)
+        s.configure("TNotebook", background="#111827", borderwidth=0, tabmargins=(2, 4, 2, 0))
+        s.configure("TNotebook.Tab", background="#1f2937", foreground="#cbd5e1",
+                    padding=(16, 9), font=(font, 10 if os.name == "nt" else 12, "bold"))
+        s.map("TNotebook.Tab",
+              background=[("selected", "#2563eb"), ("active", "#334155")],
+              foreground=[("selected", "#ffffff"), ("active", "#ffffff")])
+
+        # App-wide header keeps identity and current operation status visible on every tab.
+        app_header = tk.Frame(self, bg="#172554", padx=16, pady=11,
+                              highlightthickness=1, highlightbackground="#263b67")
+        app_header.pack(fill="x", padx=10, pady=(10, 0))
+        brand_mark = tk.Label(app_header, text="DL", bg="#2563eb", fg="#ffffff",
+                              font=(font, 13, "bold"), width=4, pady=7)
+        brand_mark.pack(side="left", padx=(0, 12))
+        brand_text = tk.Frame(app_header, bg="#172554")
+        brand_text.pack(side="left", fill="x", expand=True)
+        tk.Label(brand_text, text="DroidLab", bg="#172554", fg="#f8fafc",
+                 font=(font, 17, "bold")).pack(anchor="w")
+        tk.Label(brand_text, text="Android firmware toolkit · Extract · Diagnose · Maintain",
+                 bg="#172554", fg="#bfdbfe", font=(font, 9 if os.name == "nt" else 11)).pack(anchor="w", pady=(2, 0))
+        status_card = tk.Frame(app_header, bg="#1e293b", padx=12, pady=7)
+        status_card.pack(side="right", padx=(12, 0))
+        tk.Label(status_card, text="STATUS", bg="#1e293b", fg="#93c5fd",
+                 font=(font, 8 if os.name == "nt" else 9, "bold")).pack(anchor="w")
+        self.header_status_label = tk.Label(status_card, textvariable=self.status,
+                 bg="#1e293b", fg="#86efac", font=(font, 10 if os.name == "nt" else 11, "bold"),
+                 wraplength=190, justify="left")
+        self.header_status_label.pack(anchor="w", pady=(2, 0))
+
+        notebook=ttk.Notebook(self); notebook.pack(fill="both",expand=True,padx=10,pady=10)
         root=ttk.Frame(notebook,padding=16); notebook.add(root,text="Payload Extractor")
         device_tab=ttk.Frame(notebook,padding=0); notebook.add(device_tab,text="Device Control & Flashing")
         self.device_mode=tk.StringVar(value="adb")
@@ -344,7 +373,9 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self._build_flash_tab(self.flash_workspace); self._build_adb_tab(self.adb_workspace)
         self._show_device_workspace("adb")
         h=ttk.Frame(root); h.pack(fill="x",pady=(0,10))
-        ttk.Label(h,text=APP_NAME,style="Title.TLabel").pack(anchor="w"); ttk.Label(h,text="Android firmware toolkit · " + ("Windows desktop" if os.name == "nt" else "Linux desktop"),style="Muted.TLabel").pack(anchor="w",pady=(3,0))
+        ttk.Label(h,text="Payload inspection",style="Title.TLabel").pack(anchor="w")
+        ttk.Label(h,text="Inspect an OTA package, choose partitions, and extract verified output files.",
+                  style="Muted.TLabel", wraplength=900).pack(anchor="w",pady=(3,0))
         src=ttk.Frame(root,style="Panel.TFrame",padding=10); src.pack(fill="x",pady=(0,7)); ttk.Label(src,text="INPUT FILE PATH — TYPE OR PASTE THE FULL PATH",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(src,style="Panel.TFrame"); row.pack(fill="x",pady=(6,0)); self.source_entry=ttk.Entry(row,textvariable=self.source); self.source_entry.pack(side="left",fill="x",expand=True,ipady=4); self.source_entry.bind("<Return>",lambda _event:self._apply_manual_source_path()); ttk.Button(row,text="Browse…",command=self._browse_source).pack(side="left",padx=(7,0)); actions=ttk.Frame(src,style="Panel.TFrame"); actions.pack(fill="x",pady=(7,0)); ttk.Button(actions,text="Use typed path",command=self._apply_manual_source_path).pack(side="left"); ttk.Button(actions,text="Inspect partitions",command=self._inspect).pack(side="left",padx=(7,0))
         out=ttk.Frame(root,style="Panel.TFrame",padding=10); out.pack(fill="x",pady=(0,7)); ttk.Label(out,text="OUTPUT DIRECTORY",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(out,style="Panel.TFrame"); row.pack(fill="x",pady=(5,0)); ttk.Entry(row,textvariable=self.output).pack(side="left",fill="x",expand=True,ipady=4); ttk.Button(row,text="Choose…",command=self._browse_output).pack(side="left",padx=(7,0))
         # Compact mounted-drive controls share the output panel to save vertical space for partitions.
@@ -352,7 +383,19 @@ class PayloadDumperApp(TkinterDnD.Tk):
         middle=ttk.Frame(root); middle.pack(fill="both",expand=True,pady=(0,10)); panel=ttk.Frame(middle,style="Panel.TFrame",padding=10); panel.pack(side="left",fill="both",expand=True,padx=(0,10)); ttk.Label(panel,text="PARTITIONS (no selection = all)",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); actions=ttk.Frame(panel,style="Panel.TFrame"); actions.pack(fill="x",pady=5); ttk.Button(actions,text="Select all",command=lambda:self._select_all(True)).pack(side="left"); ttk.Button(actions,text="Select none",command=lambda:self._select_all(False)).pack(side="left",padx=5)
         self.tree=ttk.Treeview(panel,columns=("size",),show="tree headings",selectmode="none"); self.tree.heading("#0",text="Partition"); self.tree.heading("size",text="Size"); self.tree.column("#0",width=420,minwidth=260,stretch=True); self.tree.column("size",width=150,minwidth=130,anchor="e",stretch=False); self.tree.pack(fill="both",expand=True); self.tree.bind("<Button-1>",self._toggle)
         side=ttk.Frame(middle,style="Panel.TFrame",padding=14,width=300); side.pack(side="right",fill="y"); side.pack_propagate(False); ttk.Label(side,text="OPTIONS",background="#1f2937",foreground="#93c5fd",font=("Sans",16,"bold")).pack(anchor="w",pady=(0,8)); ttk.Separator(side).pack(fill="x",pady=(0,10)); ttk.Checkbutton(side,text="Generate SHA-256 fingerprints",variable=self.fingerprint,style="Large.TCheckbutton").pack(anchor="w",pady=(10,8)); ttk.Label(side,text="Creates a SHA-256 checksum for each extracted partition. This is separate from the backend’s OTA verification.",background="#1f2937",foreground="#cbd5e1",justify="left",wraplength=260,font=(self._ui_font,10 if os.name == "nt" else 12)).pack(anchor="w",pady=(4,16)); self.start_button=ttk.Button(side,text="Extract payload",command=self._start,style="Large.TButton"); self.start_button.pack(fill="x",pady=(8,8),ipady=5); self.cancel_button=ttk.Button(side,text="Cancel",command=self._cancel,state="disabled",style="Large.TButton"); self.cancel_button.pack(fill="x",ipady=5)
-        logbox=ttk.Frame(root,style="Panel.TFrame",padding=10); logbox.pack(fill="x",expand=False); ttk.Label(logbox,text="ACTIVITY LOG",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); self.log=tk.Text(logbox,bg="#0b1220",fg="#d1d5db",insertbackground="white",relief="flat",wrap="word",font=(self._mono_font,10),height=4); self.log.pack(fill="x",expand=False,pady=6); self.log.configure(state="disabled"); self.progress=ttk.Progressbar(logbox,mode="indeterminate"); self.progress.pack(fill="x",pady=(2,0)); ttk.Label(root,textvariable=self.status,style="Muted.TLabel").pack(anchor="w",pady=(7,0))
+        logbox=ttk.Frame(root,style="Panel.TFrame",padding=10); logbox.pack(fill="x",expand=False)
+        ttk.Label(logbox,text="ACTIVITY LOG",background="#1f2937",foreground="#93c5fd",
+                  font=(self._ui_font,10 if os.name == "nt" else 12,"bold")).pack(anchor="w")
+        log_frame=ttk.Frame(logbox,style="Panel.TFrame"); log_frame.pack(fill="x",expand=False,pady=6)
+        self.log=tk.Text(log_frame,bg="#0b1220",fg="#d1d5db",insertbackground="white",
+                         relief="flat",wrap="word",font=(self._mono_font,10),height=5,
+                         padx=8,pady=6)
+        log_scroll=ttk.Scrollbar(log_frame,orient="vertical",command=self.log.yview)
+        self.log.configure(yscrollcommand=log_scroll.set)
+        log_scroll.pack(side="right",fill="y")
+        self.log.pack(side="left",fill="both",expand=True)
+        self.log.configure(state="disabled")
+        self.progress=ttk.Progressbar(logbox,mode="indeterminate"); self.progress.pack(fill="x",pady=(2,0))
         self._refresh_storage_locations(); self._enable_drop(self); self._enable_drop(src); self._enable_drop(self.source_entry); self._enable_drop(root); self._append("Drag payload.bin or an OTA .zip onto the window, or type/paste its full path and choose Use typed path. Inspect to select individual partitions."); self._append("Backend: payload-dumper-go (Apache-2.0). Some delta OTA operations are unsupported.")
     def _show_device_workspace(self, mode):
         """Show only the controls appropriate for the selected device mode."""
