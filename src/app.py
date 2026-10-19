@@ -316,25 +316,82 @@ class PayloadDumperApp(TkinterDnD.Tk):
         try:s.theme_use("clam")
         except tk.TclError:pass
         font = self._ui_font
+        # Shared palette and control states adapted from the supplied React design.
+        # Keep all styling in ttk so the native desktop build stays self-contained.
         s.configure("TFrame", background="#111827")
-        s.configure("Panel.TFrame", background="#1f2937")
-        s.configure("TLabel", background="#111827", foreground="#e5e7eb", font=(font, 10 if os.name == "nt" else 13))
-        s.configure("Title.TLabel", font=(font, 20, "bold"), foreground="#f9fafb")
+        s.configure("Panel.TFrame", background="#1f2937", relief="solid",
+                    borderwidth=1, bordercolor="#374151")
+        s.configure("TLabel", background="#111827", foreground="#e5e7eb",
+                    font=(font, 10 if os.name == "nt" else 13))
+        s.configure("Title.TLabel", font=(font, 20, "bold"), foreground="#f8fafc")
         s.configure("Muted.TLabel", foreground="#cbd5e1")
-        s.configure("TButton", padding=(9, 6), font=(font, 10 if os.name == "nt" else 12))
-        s.configure("TCheckbutton", background="#1f2937", foreground="#f9fafb", font=(font, 11 if os.name == "nt" else 13))
-        s.configure("Large.TCheckbutton", background="#1f2937", foreground="#f9fafb", font=(font, 12 if os.name == "nt" else 15), padding=(2, 4))
-        s.configure("Large.TButton", padding=(10, 9), font=(font, 11 if os.name == "nt" else 14, "bold"))
-        s.configure("TEntry", padding=5, font=(font, 10 if os.name == "nt" else 12))
-        s.configure("TCombobox", padding=5, font=(font, 10 if os.name == "nt" else 12))
-        s.configure("Treeview", background="#0b1220", fieldbackground="#0b1220", foreground="#f1f5f9", rowheight=30 if os.name == "nt" else 38, font=(font, 10 if os.name == "nt" else 12))
-        s.configure("Treeview.Heading", background="#374151", foreground="#ffffff", font=(font, 10 if os.name == "nt" else 12, "bold"), padding=(7, 6))
-        s.map("Treeview", background=[("selected", "#1d4ed8")], foreground=[("selected", "#ffffff")])
-        s.configure("TNotebook", background="#111827", borderwidth=0, tabmargins=(2, 4, 2, 0))
+        s.configure("TButton", background="#374151", foreground="#f8fafc",
+                    bordercolor="#475569", lightcolor="#475569", darkcolor="#263449",
+                    relief="flat", padding=(11, 7),
+                    font=(font, 10 if os.name == "nt" else 12))
+        s.map("TButton",
+              background=[("disabled", "#1f2937"), ("pressed", "#1e40af"),
+                          ("active", "#4b5563")],
+              foreground=[("disabled", "#64748b"), ("active", "#ffffff")],
+              bordercolor=[("focus", "#3b82f6")])
+        s.configure("Primary.TButton", background="#1d4ed8", foreground="#ffffff",
+                    bordercolor="#2563eb", lightcolor="#2563eb", darkcolor="#1e40af",
+                    relief="flat", padding=(12, 7),
+                    font=(font, 10 if os.name == "nt" else 12, "bold"))
+        s.map("Primary.TButton",
+              background=[("disabled", "#334155"), ("pressed", "#1e40af"),
+                          ("active", "#2563eb")],
+              foreground=[("disabled", "#94a3b8"), ("active", "#ffffff")])
+        s.configure("Danger.TButton", background="#991b1b", foreground="#ffffff",
+                    bordercolor="#b91c1c", lightcolor="#b91c1c", darkcolor="#7f1d1d",
+                    relief="flat", padding=(11, 7),
+                    font=(font, 10 if os.name == "nt" else 12, "bold"))
+        s.map("Danger.TButton",
+              background=[("disabled", "#1f2937"), ("pressed", "#7f1d1d"),
+                          ("active", "#b91c1c")])
+        s.configure("TCheckbutton", background="#1f2937", foreground="#f8fafc",
+                    font=(font, 11 if os.name == "nt" else 13))
+        s.map("TCheckbutton", background=[("active", "#1f2937")],
+              foreground=[("active", "#ffffff")])
+        s.configure("Large.TCheckbutton", background="#1f2937", foreground="#f8fafc",
+                    font=(font, 12 if os.name == "nt" else 15), padding=(2, 4))
+        s.configure("Large.TButton", background="#1d4ed8", foreground="#ffffff",
+                    bordercolor="#2563eb", lightcolor="#2563eb", darkcolor="#1e40af",
+                    relief="flat", padding=(12, 10),
+                    font=(font, 11 if os.name == "nt" else 14, "bold"))
+        s.map("Large.TButton",
+              background=[("disabled", "#334155"), ("pressed", "#1e40af"),
+                          ("active", "#2563eb")],
+              foreground=[("disabled", "#94a3b8"), ("active", "#ffffff")])
+        s.configure("TEntry", fieldbackground="#0b1220", foreground="#f1f5f9",
+                    insertcolor="#ffffff", bordercolor="#374151", lightcolor="#374151",
+                    darkcolor="#0b1220", padding=6,
+                    font=(font, 10 if os.name == "nt" else 12))
+        s.map("TEntry", bordercolor=[("focus", "#3b82f6")])
+        s.configure("TCombobox", fieldbackground="#0b1220", background="#1f2937",
+                    foreground="#f1f5f9", arrowcolor="#cbd5e1", bordercolor="#374151",
+                    lightcolor="#374151", darkcolor="#0b1220", padding=6,
+                    font=(font, 10 if os.name == "nt" else 12))
+        s.map("TCombobox",
+              fieldbackground=[("readonly", "#0b1220"), ("focus", "#0b1220")],
+              foreground=[("readonly", "#f1f5f9")],
+              bordercolor=[("focus", "#3b82f6")])
+        s.configure("Treeview", background="#0b1220", fieldbackground="#0b1220",
+                    foreground="#f1f5f9", bordercolor="#374151",
+                    rowheight=32 if os.name == "nt" else 38,
+                    font=(font, 10 if os.name == "nt" else 12))
+        s.configure("Treeview.Heading", background="#263449", foreground="#f8fafc",
+                    font=(font, 10 if os.name == "nt" else 12, "bold"), padding=(9, 8),
+                    relief="flat")
+        s.map("Treeview", background=[("selected", "#1d4ed8")],
+              foreground=[("selected", "#ffffff")])
+        s.configure("TNotebook", background="#111827", borderwidth=0,
+                    tabmargins=(3, 5, 3, 0))
         s.configure("TNotebook.Tab", background="#1f2937", foreground="#cbd5e1",
-                    padding=(16, 9), font=(font, 10 if os.name == "nt" else 12, "bold"))
+                    padding=(18, 10), borderwidth=0,
+                    font=(font, 10 if os.name == "nt" else 12, "bold"))
         s.map("TNotebook.Tab",
-              background=[("selected", "#2563eb"), ("active", "#334155")],
+              background=[("selected", "#1d4ed8"), ("active", "#334155")],
               foreground=[("selected", "#ffffff"), ("active", "#ffffff")])
 
         # App-wide header keeps identity and current operation status visible on every tab.
@@ -382,7 +439,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         drive_row=ttk.Frame(out,style="Panel.TFrame"); drive_row.pack(fill="x",pady=(5,0)); ttk.Label(drive_row,text="Mounted drive",background="#1f2937",foreground="#cbd5e1").pack(side="left",padx=(0,8)); self.storage_var=tk.StringVar(); self.storage_combo=ttk.Combobox(drive_row,textvariable=self.storage_var,state="readonly"); self.storage_combo.pack(side="left",fill="x",expand=True); ttk.Button(drive_row,text="Refresh",command=self._refresh_storage_locations).pack(side="left",padx=(7,0)); ttk.Button(drive_row,text="Browse drive",command=self._browse_selected_storage).pack(side="left",padx=(7,0)); ttk.Button(drive_row,text="Use for output",command=self._use_selected_storage).pack(side="left",padx=(7,0));
         middle=ttk.Frame(root); middle.pack(fill="both",expand=True,pady=(0,10)); panel=ttk.Frame(middle,style="Panel.TFrame",padding=10); panel.pack(side="left",fill="both",expand=True,padx=(0,10)); ttk.Label(panel,text="PARTITIONS",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); ttk.Label(panel,text="Filter by partition name; no selection means extract all.",background="#1f2937",foreground="#cbd5e1").pack(anchor="w",pady=(2,5)); filter_row=ttk.Frame(panel,style="Panel.TFrame"); filter_row.pack(fill="x",pady=(0,5)); self.partition_filter=tk.StringVar(); self.partition_filter.trace_add("write",lambda *_:self._refresh_partition_tree()); self.partition_filter_entry=ttk.Entry(filter_row,textvariable=self.partition_filter); self.partition_filter_entry.pack(side="left",fill="x",expand=True); ttk.Button(filter_row,text="Clear",command=lambda:self.partition_filter.set("")).pack(side="left",padx=(6,0)); actions=ttk.Frame(panel,style="Panel.TFrame"); actions.pack(fill="x",pady=5); ttk.Button(actions,text="Select all",command=lambda:self._select_all(True)).pack(side="left"); ttk.Button(actions,text="Select none",command=lambda:self._select_all(False)).pack(side="left",padx=5); self.partition_summary=tk.StringVar(value="0 partitions · 0 selected · 0 B selected"); ttk.Label(actions,textvariable=self.partition_summary,background="#1f2937",foreground="#cbd5e1").pack(side="right",padx=(8,0))
         self.tree=ttk.Treeview(panel,columns=("size",),show="tree headings",selectmode="none"); self.tree.heading("#0",text="Partition"); self.tree.heading("size",text="Size"); self.tree.column("#0",width=420,minwidth=260,stretch=True); self.tree.column("size",width=150,minwidth=130,anchor="e",stretch=False); self.tree.pack(fill="both",expand=True); self.tree.bind("<Button-1>",self._toggle)
-        side=ttk.Frame(middle,style="Panel.TFrame",padding=14,width=300); side.pack(side="right",fill="y"); side.pack_propagate(False); ttk.Label(side,text="OPTIONS",background="#1f2937",foreground="#93c5fd",font=("Sans",16,"bold")).pack(anchor="w",pady=(0,8)); ttk.Separator(side).pack(fill="x",pady=(0,10)); ttk.Checkbutton(side,text="Generate SHA-256 fingerprints",variable=self.fingerprint,style="Large.TCheckbutton").pack(anchor="w",pady=(10,8)); ttk.Label(side,text="Creates a SHA-256 checksum for each extracted partition. This is separate from the backend’s OTA verification.",background="#1f2937",foreground="#cbd5e1",justify="left",wraplength=260,font=(self._ui_font,10 if os.name == "nt" else 12)).pack(anchor="w",pady=(4,16)); self.start_button=ttk.Button(side,text="Extract payload",command=self._start,style="Large.TButton"); self.start_button.pack(fill="x",pady=(8,8),ipady=5); self.cancel_button=ttk.Button(side,text="Cancel",command=self._cancel,state="disabled",style="Large.TButton"); self.cancel_button.pack(fill="x",ipady=5)
+        side=ttk.Frame(middle,style="Panel.TFrame",padding=14,width=300); side.pack(side="right",fill="y"); side.pack_propagate(False); ttk.Label(side,text="OPTIONS",background="#1f2937",foreground="#93c5fd",font=("Sans",16,"bold")).pack(anchor="w",pady=(0,8)); ttk.Separator(side).pack(fill="x",pady=(0,10)); ttk.Checkbutton(side,text="Generate SHA-256 fingerprints",variable=self.fingerprint,style="Large.TCheckbutton").pack(anchor="w",pady=(10,8)); ttk.Label(side,text="Creates a SHA-256 checksum for each extracted partition. This is separate from the backend’s OTA verification.",background="#1f2937",foreground="#cbd5e1",justify="left",wraplength=260,font=(self._ui_font,10 if os.name == "nt" else 12)).pack(anchor="w",pady=(4,16)); self.start_button=ttk.Button(side,text="Extract payload",command=self._start,style="Large.TButton"); self.start_button.pack(fill="x",pady=(8,8),ipady=5); self.cancel_button=ttk.Button(side,text="Cancel",command=self._cancel,state="disabled",style="Danger.TButton"); self.cancel_button.pack(fill="x",ipady=5)
         logbox=ttk.Frame(root,style="Panel.TFrame",padding=10); logbox.pack(fill="x",expand=False)
         ttk.Label(logbox,text="ACTIVITY LOG",background="#1f2937",foreground="#93c5fd",
                   font=(self._ui_font,10 if os.name == "nt" else 12,"bold")).pack(anchor="w")
@@ -566,7 +623,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         flash_buttons = ttk.Frame(controls)
         flash_buttons.grid(row=5, column=0, sticky="nw")
         ttk.Button(flash_buttons, text="Preview command", command=self._update_flash_preview).pack(side="left")
-        ttk.Button(flash_buttons, text="Flash image…", command=self._flash_image).pack(side="left", padx=(7, 0))
+        ttk.Button(flash_buttons, text="Flash image…", command=self._flash_image, style="Primary.TButton").pack(side="left", padx=(7, 0))
 
         # Advanced commands live below the flashing controls, not under the console.
         manual = ttk.Frame(controls, style="Panel.TFrame", padding=12)
@@ -581,7 +638,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.fastboot_manual_entry.pack(fill="x", pady=(0, 6), ipady=4)
         manual_buttons = ttk.Frame(manual, style="Panel.TFrame")
         manual_buttons.pack(fill="x")
-        ttk.Button(manual_buttons, text="Run Fastboot command", command=self._run_fastboot_manual).pack(side="left")
+        ttk.Button(manual_buttons, text="Run Fastboot command", command=self._run_fastboot_manual, style="Primary.TButton").pack(side="left")
         ttk.Button(manual_buttons, text="Clear", command=lambda: self.fastboot_manual_command.set("")).pack(
             side="left", padx=(7, 0))
         self._enable_command_drop(self.fastboot_manual_entry, self.fastboot_manual_command, "fastboot")
@@ -700,7 +757,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         row=ttk.Frame(side,style="Panel.TFrame"); row.pack(fill="x",pady=(5,0))
         self.sideload_file=tk.StringVar(); self.sideload_entry=ttk.Entry(row,textvariable=self.sideload_file); self.sideload_entry.pack(side="left",fill="x",expand=True,ipady=4)
         ttk.Button(row,text="Browse ZIP…",command=self._browse_sideload_zip).pack(side="left",padx=(7,0))
-        ttk.Button(row,text="Sideload ZIP…",command=self._run_adb_sideload).pack(side="left",padx=(7,0))
+        ttk.Button(row,text="Sideload ZIP…",command=self._run_adb_sideload,style="Primary.TButton").pack(side="left",padx=(7,0))
         drop_hint=ttk.Label(side,text="Drop a compatible flashable ZIP here, or use Browse ZIP…",background="#111827",foreground="#93c5fd",padding=8,wraplength=1100); drop_hint.pack(fill="x",pady=(7,0))
         for drop_widget in (side, self.sideload_entry, drop_hint): self._enable_sideload_drop(drop_widget)
         ttk.Label(side,text="Boot into a compatible recovery and choose Apply update from ADB (or its equivalent). Select the device marked [sideload]. Compatible packages may include OTA updates, custom ROMs, Magisk, kernels, or mods. Verify the package and recovery instructions for your exact device; not every ZIP supports sideload.",background="#1f2937",foreground="#cbd5e1",wraplength=1100).pack(anchor="w",pady=(5,0))
@@ -711,7 +768,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.adb_shell_entry=ttk.Entry(row,textvariable=self.adb_shell_command)
         self.adb_shell_entry.pack(side="left",fill="x",expand=True,ipady=4)
         self.adb_shell_entry.bind("<Return>",lambda _event:self._run_adb_shell())
-        ttk.Button(row,text="Run command",command=self._run_adb_shell).pack(side="left",padx=(7,0))
+        ttk.Button(row,text="Run command",command=self._run_adb_shell,style="Primary.TButton").pack(side="left",padx=(7,0))
         self._enable_command_drop(self.adb_shell_entry,self.adb_shell_command,"adb")
         ttk.Label(shell,text="Tip: Enter device-shell commands (dumpsys battery) OR host commands (adb devices, adb reboot recovery). Do not type adb commands into the Android shell itself.",
                   background="#1f2937",foreground="#cbd5e1",wraplength=1100,justify="left").grid(row=3,column=0,sticky="w",pady=(5,0))
