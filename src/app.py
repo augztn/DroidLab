@@ -395,7 +395,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
               foreground=[("selected", "#ffffff"), ("active", "#ffffff")])
 
         # App-wide header keeps identity and current operation status visible on every tab.
-        app_header = tk.Frame(self, bg="#172554", padx=12, pady=7,
+        app_header = tk.Frame(self, bg="#172554", padx=8, pady=4,
                               highlightthickness=1, highlightbackground="#263b67")
         app_header.pack(fill="x", padx=6, pady=(6, 0))
         brand_mark = tk.Label(app_header, text="DL", bg="#2563eb", fg="#ffffff",
@@ -407,23 +407,23 @@ class PayloadDumperApp(TkinterDnD.Tk):
                  font=(font, 17, "bold")).pack(anchor="w")
         tk.Label(brand_text, text="Android firmware toolkit · Extract · Diagnose · Maintain",
                  bg="#172554", fg="#bfdbfe", font=(font, 9 if os.name == "nt" else 11)).pack(anchor="w", pady=(2, 0))
-        status_card = tk.Frame(app_header, bg="#1e293b", padx=12, pady=7)
+        status_card = tk.Frame(app_header, bg="#1e293b", padx=6, pady=3)
         status_card.pack(side="right", padx=(12, 0))
         tk.Label(status_card, text="STATUS", bg="#1e293b", fg="#93c5fd",
                  font=(font, 8 if os.name == "nt" else 9, "bold")).pack(anchor="w")
         self.header_status_label = tk.Label(status_card, textvariable=self.status,
                  bg="#1e293b", fg="#86efac", font=(font, 10 if os.name == "nt" else 11, "bold"),
-                 wraplength=190, justify="left")
+                 wraplength=120, justify="left")
         self.header_status_label.pack(anchor="w", pady=(2, 0))
 
         notebook=ttk.Notebook(self); notebook.pack(fill="both",expand=True,padx=6,pady=6)
-        root=ttk.Frame(notebook,padding=16); notebook.add(root,text="Payload Extractor")
+        root=ttk.Frame(notebook,padding=8); notebook.add(root,text="Payload Extractor")
         device_tab=ttk.Frame(notebook,padding=0); notebook.add(device_tab,text="Device Control & Flashing")
         self.device_mode=tk.StringVar(value="adb")
         self.device_workspace=ttk.Frame(device_tab)
         self.device_workspace.pack(fill="both",expand=True)
-        self.flash_workspace=ttk.Frame(self.device_workspace,padding=16)
-        self.adb_workspace=ttk.Frame(self.device_workspace,padding=16)
+        self.flash_workspace=ttk.Frame(self.device_workspace,padding=8)
+        self.adb_workspace=ttk.Frame(self.device_workspace,padding=6)
         self.flash_workspace.grid(row=0,column=0,sticky="nsew")
         self.adb_workspace.grid(row=0,column=0,sticky="nsew")
         self.device_workspace.columnconfigure(0,weight=1); self.device_workspace.rowconfigure(0,weight=1)
@@ -492,7 +492,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         tab.columnconfigure(1, weight=2, uniform="fastboot_workspace")
         tab.rowconfigure(3, weight=1)
 
-        ttk.Label(tab, text="Fastboot & Flashing", font=("Sans", 22, "bold")).grid(
+        ttk.Label(tab, text="Fastboot & Flashing", font=("Sans", 18, "bold")).grid(
             row=0, column=0, columnspan=2, sticky="w", pady=(0, 6))
         ttk.Label(tab, text="Select the connected device first, then choose an image or maintenance action.",
                   style="Muted.TLabel").grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 5))
@@ -694,7 +694,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         tab.columnconfigure(0, weight=1)
         tab.rowconfigure(3, weight=1)
         ttk.Label(tab, text="ADB & Sideload", font=("Sans", 18, "bold")).grid(row=0, column=0, sticky="w", pady=(0, 4))
-        ttk.Label(tab, text="Reboot, collect logs and diagnostics, run device shell commands, or sideload an OTA ZIP from recovery.", style="Muted.TLabel", wraplength=1100).grid(row=1, column=0, sticky="w", pady=(0, 6))
+        ttk.Label(tab, text="Reboot, collect logs and diagnostics, run device shell commands, or sideload an OTA ZIP from recovery.", style="Muted.TLabel", wraplength=900).grid(row=1, column=0, sticky="w", pady=(0, 3))
         device=ttk.Frame(tab,style="Panel.TFrame",padding=6); device.grid(row=2,column=0,sticky="ew",pady=(0,6))
         ttk.Label(device,text="ADB DEVICE",background="#1f2937",foreground="#93c5fd").pack(anchor="w")
         row=ttk.Frame(device,style="Panel.TFrame"); row.pack(fill="x",pady=(5,0))
@@ -709,7 +709,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         workspace=ttk.Frame(tab); workspace.grid(row=3,column=0,sticky="nsew"); workspace.columnconfigure(0,weight=3,uniform="adb_workspace"); workspace.columnconfigure(1,weight=2,uniform="adb_workspace"); workspace.rowconfigure(0,weight=1)
         lower=ttk.Frame(workspace); lower.grid(row=0,column=0,sticky="nsew",padx=(0,10)); lower.columnconfigure(0,weight=1); lower.rowconfigure(2,weight=1)
         right=ttk.Frame(workspace); right.grid(row=0,column=1,sticky="nsew"); right.columnconfigure(0,weight=1); right.rowconfigure(1,weight=1)
-        adb_info = ttk.Frame(right, style="Panel.TFrame", padding=10)
+        adb_info = ttk.Frame(right, style="Panel.TFrame", padding=6)
         adb_info.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         adb_info.columnconfigure(1, weight=1)
         ttk.Label(adb_info, text="DEVICE INFO", background="#1f2937", foreground="#93c5fd",
@@ -731,7 +731,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
             ttk.Label(adb_info, textvariable=var, background="#1f2937", foreground="#f8fafc",
                       wraplength=300).grid(row=row_idx, column=1, sticky="w", padx=(8, 0), pady=1)
         # Left-side controls were created in `lower`; keep the existing workspace and right column.
-        adb_console_panel=ttk.Frame(right,style="Panel.TFrame",padding=6); adb_console_panel.grid(row=1,column=0,sticky="nsew"); adb_console_panel.rowconfigure(1,weight=1); adb_console_panel.columnconfigure(0,weight=1)
+        adb_console_panel=ttk.Frame(right,style="Panel.TFrame",padding=4); adb_console_panel.grid(row=1,column=0,sticky="nsew"); adb_console_panel.rowconfigure(1,weight=1); adb_console_panel.columnconfigure(0,weight=1)
         ttk.Label(adb_console_panel,text="REAL-TIME CONSOLE / ACTIVITY",background="#1f2937",foreground="#93c5fd",font=("Sans",12,"bold")).grid(row=0,column=0,sticky="w",pady=(0,6))
         self.adb_console=tk.Text(adb_console_panel,bg="#0b1220",fg="#d1d5db",insertbackground="white",relief="flat",wrap="word",font=(self._mono_font,9),state="disabled")
         adb_console_scroll=ttk.Scrollbar(adb_console_panel,orient="vertical",command=self.adb_console.yview); adb_console_scroll.grid(row=1,column=1,sticky="ns"); self.adb_console.configure(yscrollcommand=adb_console_scroll.set); self.adb_console.grid(row=1,column=0,sticky="nsew")
@@ -746,7 +746,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.bootloader_button.pack(side="left",padx=4)
         self.recovery_button=ttk.Button(row,text="Recovery",command=lambda:self._adb_reboot("recovery"))
         self.recovery_button.pack(side="left",padx=4)
-        diag=ttk.Frame(actions,style="Panel.TFrame",padding=10); diag.pack(side="left",fill="both",expand=True)
+        diag=ttk.Frame(actions,style="Panel.TFrame",padding=6); diag.pack(side="left",fill="both",expand=True)
         ttk.Label(diag,text="LOGS & DIAGNOSTICS",background="#1f2937",foreground="#93c5fd").pack(anchor="w",pady=(0,6))
         row=ttk.Frame(diag,style="Panel.TFrame"); row.pack(fill="x")
         ttk.Button(row,text="Live logcat",command=self._start_adb_logcat).pack(side="left",padx=(0,4))
