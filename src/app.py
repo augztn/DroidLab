@@ -601,8 +601,27 @@ class PayloadDumperApp(TkinterDnD.Tk):
         ttk.Label(device,textvariable=self.device_mode_status,background="#1f2937",foreground="#86efac",
                   wraplength=1000,font=("Sans",10,"bold")).pack(anchor="w",pady=(6,0))
         ttk.Label(device,textvariable=self.adb_device_status,background="#1f2937",foreground="#cbd5e1",wraplength=1000).pack(anchor="w",pady=(3,0))
+        adb_info = ttk.Frame(tab, style="Panel.TFrame", padding=10)
+        adb_info.grid(row=3, column=0, sticky="ew", pady=(0, 10))
+        adb_info.columnconfigure(1, weight=1)
+        ttk.Label(adb_info, text="DEVICE INFO", background="#1f2937", foreground="#93c5fd",
+                  font=("Sans", 11, "bold")).grid(row=0, column=0, sticky="w")
+        self.adb_device_info_mode = tk.StringVar(value="NO DEVICE")
+        self.adb_device_info_mode_label = tk.Label(adb_info, textvariable=self.adb_device_info_mode,
+            bg="#4b5563", fg="#fef3c7", padx=8, pady=3, font=("Sans", 9, "bold"))
+        self.adb_device_info_mode_label.grid(row=0, column=2, sticky="e")
+        self.adb_device_info_vars = {}
+        for row_idx, (key, initial) in enumerate((("Brand / Manufacturer", "—"), ("Device name / Model", "—"),
+                ("Model code", "—"), ("Codename", "—"), ("Active slot", "—"),
+                ("Bootloader", "—"), ("Battery", "—")), start=1):
+            ttk.Label(adb_info, text=key + ":", background="#1f2937", foreground="#cbd5e1").grid(
+                row=row_idx, column=0, sticky="w", pady=1)
+            var = tk.StringVar(value=initial)
+            self.adb_device_info_vars[key] = var
+            ttk.Label(adb_info, textvariable=var, background="#1f2937", foreground="#f8fafc",
+                      wraplength=300).grid(row=row_idx, column=1, sticky="w", padx=(8, 0), pady=1)
         # Two-column workspace keeps controls visible beside the live console.
-        workspace=ttk.Frame(tab); workspace.grid(row=3,column=0,sticky="nsew"); workspace.columnconfigure(0,weight=3,uniform="adb_workspace"); workspace.columnconfigure(1,weight=2,uniform="adb_workspace"); workspace.rowconfigure(0,weight=1)
+        workspace=ttk.Frame(tab); workspace.grid(row=4,column=0,sticky="nsew"); workspace.columnconfigure(0,weight=3,uniform="adb_workspace"); workspace.columnconfigure(1,weight=2,uniform="adb_workspace"); workspace.rowconfigure(0,weight=1)
         lower=ttk.Frame(workspace); lower.grid(row=0,column=0,sticky="nsew",padx=(0,10)); lower.columnconfigure(0,weight=1); lower.rowconfigure(2,weight=1)
         adb_console_panel=ttk.Frame(workspace,style="Panel.TFrame",padding=10); adb_console_panel.grid(row=0,column=1,sticky="nsew"); adb_console_panel.rowconfigure(1,weight=1); adb_console_panel.columnconfigure(0,weight=1)
         ttk.Label(adb_console_panel,text="REAL-TIME CONSOLE / ACTIVITY",background="#1f2937",foreground="#93c5fd",font=("Sans",12,"bold")).grid(row=0,column=0,sticky="w",pady=(0,6))
@@ -713,13 +732,21 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self._append("Combined device scan: " + (", ".join(labels) if labels else "no ADB or Fastboot devices found"))
 
     def _set_device_info(self, values, mode, color):
-        if not hasattr(self, "device_info_vars"):
-            return
-        self.device_info_mode.set(mode)
-        self.device_info_mode_label.configure(bg=color)
-        for key, value in values.items():
-            if key in self.device_info_vars:
-                self.device_info_vars[key].set(value or "—")
+        for vars_name, mode_name, label_name in (
+            ("device_info_vars", "device_info_mode", "device_info_mode_label"),
+            ("adb_device_info_vars", "adb_device_info_mode", "adb_device_info_mode_label")):
+            vars_map = getattr(self, vars_name, None)
+            if not vars_map:
+                continue
+            mode_var = getattr(self, mode_name, None)
+            mode_label = getattr(self, label_name, None)
+            if mode_var:
+                mode_var.set(mode)
+            if mode_label:
+                mode_label.configure(bg=color)
+            for key, value in values.items():
+                if key in vars_map:
+                    vars_map[key].set(value or "—")
 
     def _refresh_device_info(self):
         """Read best-effort device identity and safety metadata for the selected target."""
