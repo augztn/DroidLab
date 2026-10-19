@@ -639,19 +639,21 @@ class PayloadDumperApp(TkinterDnD.Tk):
 
         info = ttk.Frame(right, style="Panel.TFrame", padding=5)
         info.grid(row=0, column=0, sticky="ew", pady=(0, 5))
-        ttk.Label(info, text="DEVICE INFO", background="#1f2937", foreground="#93c5fd",
-                  font=("Sans", 10, "bold")).grid(row=0, column=0, sticky="w")
+        info.columnconfigure(1, weight=1)
         self.device_info_mode_label = tk.Label(info, textvariable=self.device_info_mode,
-            bg="#4b5563", fg="#fef3c7", padx=6, pady=2, font=("Sans", 8, "bold"))
-        self.device_info_mode_label.grid(row=0, column=1, sticky="e", padx=(4, 0))
-        for row, (key, initial) in enumerate((("Brand / Manufacturer", "—"), ("Device name / Model", "—"),
-                ("Model code", "—"), ("Codename", "—"), ("Active slot", "—"),
-                ("Bootloader", "—"), ("Battery", "—")), start=1):
-            ttk.Label(info, text=key + ":", background="#1f2937", foreground="#cbd5e1").grid(row=row, column=0, sticky="w", pady=0)
-            var = tk.StringVar(value=initial)
+            bg="#B45309", fg="#FFFFFF", padx=7, pady=2, font=("Sans", 8, "bold"))
+        self.device_info_mode_label.grid(row=0, column=0, sticky="w", padx=(0, 8))
+        fastboot_fields = (("Device", "Device name / Model"), ("Codename", "Codename"),
+                           ("Slot", "Active slot"), ("Bootloader", "Bootloader"), ("Battery", "Battery"))
+        for col, (label, key) in enumerate(fastboot_fields, start=1):
+            cell = ttk.Frame(info, style="Panel.TFrame")
+            cell.grid(row=0, column=col, sticky="w", padx=(0, 10))
+            ttk.Label(cell, text=label.upper(), background="#1E222D", foreground="#8B949E",
+                      font=("Sans", 8, "bold")).pack(side="left", padx=(0, 4))
+            var = tk.StringVar(value="—")
             self.device_info_vars[key] = var
-            ttk.Label(info, textvariable=var, background="#1f2937", foreground="#f8fafc",
-                      wraplength=180).grid(row=row, column=1, sticky="w", padx=(6, 0), pady=0)
+            ttk.Label(cell, textvariable=var, background="#1E222D", foreground="#E6EDF3",
+                      font=(self._mono_font, 9)).pack(side="left")
 
         console_panel = ttk.Frame(right, style="Panel.TFrame", padding=2)
         console_panel.grid(row=1, column=0, sticky="nsew")
@@ -718,24 +720,25 @@ class PayloadDumperApp(TkinterDnD.Tk):
         adb_info = ttk.Frame(right, style="Panel.TFrame", padding=6)
         adb_info.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         adb_info.columnconfigure(1, weight=1)
-        ttk.Label(adb_info, text="DEVICE INFO", background="#1f2937", foreground="#93c5fd",
-                  font=("Sans", 11, "bold")).grid(row=0, column=0, sticky="w")
         self.adb_device_info_mode = tk.StringVar(value="NO DEVICE")
         self.adb_device_info_mode_label = tk.Label(adb_info, textvariable=self.adb_device_info_mode,
-            bg="#4b5563", fg="#fef3c7", padx=8, pady=3, font=("Sans", 9, "bold"))
-        self.adb_device_info_mode_label.grid(row=0, column=2, sticky="e")
+            bg="#065F46", fg="#FFFFFF", padx=7, pady=2, font=("Sans", 8, "bold"))
+        self.adb_device_info_mode_label.grid(row=0, column=0, sticky="w", padx=(0, 8))
         self.adb_info_loading = tk.StringVar(value="")
-        ttk.Label(adb_info, textvariable=self.adb_info_loading, background="#1f2937", foreground="#fbbf24").grid(row=0, column=1, sticky="e")
+        ttk.Label(adb_info, textvariable=self.adb_info_loading, background="#1E222D",
+                  foreground="#FBBF24").grid(row=0, column=6, sticky="e")
         self.adb_device_info_vars = {}
-        for row_idx, (key, initial) in enumerate((("Brand / Manufacturer", "—"), ("Device name / Model", "—"),
-                ("Model code", "—"), ("Codename", "—"), ("Active slot", "—"),
-                ("Android Version", "—"), ("Battery", "—")), start=1):
-            ttk.Label(adb_info, text=key + ":", background="#1f2937", foreground="#cbd5e1").grid(
-                row=row_idx, column=0, sticky="w", pady=1)
-            var = tk.StringVar(value=initial)
+        adb_fields = (("Device", "Device name / Model"), ("Codename", "Codename"),
+                      ("Slot", "Active slot"), ("Android", "Android Version"), ("Battery", "Battery"))
+        for col, (label, key) in enumerate(adb_fields, start=1):
+            cell = ttk.Frame(adb_info, style="Panel.TFrame")
+            cell.grid(row=0, column=col, sticky="w", padx=(0, 10))
+            ttk.Label(cell, text=label.upper(), background="#1E222D", foreground="#8B949E",
+                      font=("Sans", 8, "bold")).pack(side="left", padx=(0, 4))
+            var = tk.StringVar(value="—")
             self.adb_device_info_vars[key] = var
-            ttk.Label(adb_info, textvariable=var, background="#1f2937", foreground="#f8fafc",
-                      wraplength=300).grid(row=row_idx, column=1, sticky="w", padx=(8, 0), pady=1)
+            ttk.Label(cell, textvariable=var, background="#1E222D", foreground="#E6EDF3",
+                      font=(self._mono_font, 9)).pack(side="left")
         # Left-side controls were created in `lower`; keep the existing workspace and right column.
         adb_console_panel=ttk.Frame(right,style="Panel.TFrame",padding=4); adb_console_panel.grid(row=1,column=0,sticky="nsew"); adb_console_panel.rowconfigure(1,weight=1); adb_console_panel.columnconfigure(0,weight=1)
         ttk.Label(adb_console_panel,text="REAL-TIME CONSOLE / ACTIVITY",background="#1f2937",foreground="#93c5fd",font=("Sans",12,"bold")).grid(row=0,column=0,sticky="w",pady=(0,6))
