@@ -110,7 +110,7 @@ jobs:
           "@ | Set-Content "$bundle\README-Windows.txt"
           Compress-Archive -Path $bundle -DestinationPath "${bundle}.zip" -Force
       - name: Share Windows ZIP to Telegram
-        if: github.event_name != 'pull_request' && env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != ''
+        if: github.event_name != 'pull_request'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -120,6 +120,10 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          if ([string]::IsNullOrWhiteSpace($env:TELEGRAM_BOT_TOKEN) -or [string]::IsNullOrWhiteSpace($env:TELEGRAM_CHAT_ID)) {
+            Write-Host "Telegram secrets are not configured; skipping Telegram delivery."
+            exit 0
+          }
           $zip = Get-ChildItem "dist\DroidLab-*-windows-${{ matrix.arch }}.zip" | Select-Object -First 1
           if (-not $zip) { throw "Windows ZIP not found for Telegram upload." }
           $caption = "DroidLab for Windows (${{ matrix.arch }})`nBuild: $env:GITHUB_RUN_NUMBER"
