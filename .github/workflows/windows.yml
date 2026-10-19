@@ -110,7 +110,7 @@ jobs:
           "@ | Set-Content "$bundle\README-Windows.txt"
           Compress-Archive -Path $bundle -DestinationPath "${bundle}.zip" -Force
       - name: Share Windows ZIP to Telegram
-        if: github.event_name != 'pull_request' && secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != ''
+        if: github.event_name != 'pull_request' && env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != ''
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
