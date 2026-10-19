@@ -81,7 +81,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         # Use a practical Windows-first size; ttk layouts and system fonts scale
         # more predictably than the oversized Linux-oriented defaults.
         self.geometry("1240x820")
-        self.minsize(900, 640)
+        self.minsize(960, 680)
         self.configure(bg="#111827")
         self._ui_font = "Segoe UI" if os.name == "nt" else "Sans"
         self._mono_font = "Consolas" if os.name == "nt" else "Monospace"
@@ -330,7 +330,36 @@ class PayloadDumperApp(TkinterDnD.Tk):
         s.configure("Treeview", background="#0b1220", fieldbackground="#0b1220", foreground="#f1f5f9", rowheight=30 if os.name == "nt" else 38, font=(font, 10 if os.name == "nt" else 12))
         s.configure("Treeview.Heading", background="#374151", foreground="#ffffff", font=(font, 10 if os.name == "nt" else 12, "bold"), padding=(7, 6))
         s.map("Treeview", background=[("selected", "#1d4ed8")], foreground=[("selected", "#ffffff")])
-        notebook=ttk.Notebook(self); notebook.pack(fill="both",expand=True,padx=8,pady=8)
+        s.configure("TNotebook", background="#111827", borderwidth=0, tabmargins=(2, 4, 2, 0))
+        s.configure("TNotebook.Tab", background="#1f2937", foreground="#cbd5e1",
+                    padding=(16, 9), font=(font, 10 if os.name == "nt" else 12, "bold"))
+        s.map("TNotebook.Tab",
+              background=[("selected", "#2563eb"), ("active", "#334155")],
+              foreground=[("selected", "#ffffff"), ("active", "#ffffff")])
+
+        # App-wide header keeps identity and current operation status visible on every tab.
+        app_header = tk.Frame(self, bg="#172554", padx=16, pady=11,
+                              highlightthickness=1, highlightbackground="#263b67")
+        app_header.pack(fill="x", padx=10, pady=(10, 0))
+        brand_mark = tk.Label(app_header, text="DL", bg="#2563eb", fg="#ffffff",
+                              font=(font, 13, "bold"), width=4, pady=7)
+        brand_mark.pack(side="left", padx=(0, 12))
+        brand_text = tk.Frame(app_header, bg="#172554")
+        brand_text.pack(side="left", fill="x", expand=True)
+        tk.Label(brand_text, text="DroidLab", bg="#172554", fg="#f8fafc",
+                 font=(font, 17, "bold")).pack(anchor="w")
+        tk.Label(brand_text, text="Android firmware toolkit · Extract · Diagnose · Maintain",
+                 bg="#172554", fg="#bfdbfe", font=(font, 9 if os.name == "nt" else 11)).pack(anchor="w", pady=(2, 0))
+        status_card = tk.Frame(app_header, bg="#1e293b", padx=12, pady=7)
+        status_card.pack(side="right", padx=(12, 0))
+        tk.Label(status_card, text="STATUS", bg="#1e293b", fg="#93c5fd",
+                 font=(font, 8 if os.name == "nt" else 9, "bold")).pack(anchor="w")
+        self.header_status_label = tk.Label(status_card, textvariable=self.status,
+                 bg="#1e293b", fg="#86efac", font=(font, 10 if os.name == "nt" else 11, "bold"),
+                 wraplength=190, justify="left")
+        self.header_status_label.pack(anchor="w", pady=(2, 0))
+
+        notebook=ttk.Notebook(self); notebook.pack(fill="both",expand=True,padx=10,pady=10)
         root=ttk.Frame(notebook,padding=16); notebook.add(root,text="Payload Extractor")
         device_tab=ttk.Frame(notebook,padding=0); notebook.add(device_tab,text="Device Control & Flashing")
         self.device_mode=tk.StringVar(value="adb")
@@ -344,15 +373,29 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self._build_flash_tab(self.flash_workspace); self._build_adb_tab(self.adb_workspace)
         self._show_device_workspace("adb")
         h=ttk.Frame(root); h.pack(fill="x",pady=(0,10))
-        ttk.Label(h,text=APP_NAME,style="Title.TLabel").pack(anchor="w"); ttk.Label(h,text="Android firmware toolkit · " + ("Windows desktop" if os.name == "nt" else "Linux desktop"),style="Muted.TLabel").pack(anchor="w",pady=(3,0))
+        ttk.Label(h,text="Payload inspection",style="Title.TLabel").pack(anchor="w")
+        ttk.Label(h,text="Inspect an OTA package, choose partitions, and extract verified output files.",
+                  style="Muted.TLabel", wraplength=900).pack(anchor="w",pady=(3,0))
         src=ttk.Frame(root,style="Panel.TFrame",padding=10); src.pack(fill="x",pady=(0,7)); ttk.Label(src,text="INPUT FILE PATH — TYPE OR PASTE THE FULL PATH",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(src,style="Panel.TFrame"); row.pack(fill="x",pady=(6,0)); self.source_entry=ttk.Entry(row,textvariable=self.source); self.source_entry.pack(side="left",fill="x",expand=True,ipady=4); self.source_entry.bind("<Return>",lambda _event:self._apply_manual_source_path()); ttk.Button(row,text="Browse…",command=self._browse_source).pack(side="left",padx=(7,0)); actions=ttk.Frame(src,style="Panel.TFrame"); actions.pack(fill="x",pady=(7,0)); ttk.Button(actions,text="Use typed path",command=self._apply_manual_source_path).pack(side="left"); ttk.Button(actions,text="Inspect partitions",command=self._inspect).pack(side="left",padx=(7,0))
-        out=ttk.Frame(root,style="Panel.TFrame",padding=10); out.pack(fill="x",pady=(0,7)); ttk.Label(out,text="OUTPUT DIRECTORY",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(out,style="Panel.TFrame"); row.pack(fill="x",pady=(5,0)); ttk.Entry(row,textvariable=self.output).pack(side="left",fill="x",expand=True,ipady=4); ttk.Button(row,text="Choose…",command=self._browse_output).pack(side="left",padx=(7,0))
+        out=ttk.Frame(root,style="Panel.TFrame",padding=10); out.pack(fill="x",pady=(0,7)); ttk.Label(out,text="OUTPUT DIRECTORY",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(out,style="Panel.TFrame"); row.pack(fill="x",pady=(5,0)); ttk.Entry(row,textvariable=self.output).pack(side="left",fill="x",expand=True,ipady=4); ttk.Button(row,text="Choose…",command=self._browse_output).pack(side="left",padx=(7,0)); ttk.Button(row,text="Open folder",command=self._open_output_directory).pack(side="left",padx=(7,0))
         # Compact mounted-drive controls share the output panel to save vertical space for partitions.
         drive_row=ttk.Frame(out,style="Panel.TFrame"); drive_row.pack(fill="x",pady=(5,0)); ttk.Label(drive_row,text="Mounted drive",background="#1f2937",foreground="#cbd5e1").pack(side="left",padx=(0,8)); self.storage_var=tk.StringVar(); self.storage_combo=ttk.Combobox(drive_row,textvariable=self.storage_var,state="readonly"); self.storage_combo.pack(side="left",fill="x",expand=True); ttk.Button(drive_row,text="Refresh",command=self._refresh_storage_locations).pack(side="left",padx=(7,0)); ttk.Button(drive_row,text="Browse drive",command=self._browse_selected_storage).pack(side="left",padx=(7,0)); ttk.Button(drive_row,text="Use for output",command=self._use_selected_storage).pack(side="left",padx=(7,0));
-        middle=ttk.Frame(root); middle.pack(fill="both",expand=True,pady=(0,10)); panel=ttk.Frame(middle,style="Panel.TFrame",padding=10); panel.pack(side="left",fill="both",expand=True,padx=(0,10)); ttk.Label(panel,text="PARTITIONS (no selection = all)",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); actions=ttk.Frame(panel,style="Panel.TFrame"); actions.pack(fill="x",pady=5); ttk.Button(actions,text="Select all",command=lambda:self._select_all(True)).pack(side="left"); ttk.Button(actions,text="Select none",command=lambda:self._select_all(False)).pack(side="left",padx=5)
+        middle=ttk.Frame(root); middle.pack(fill="both",expand=True,pady=(0,10)); panel=ttk.Frame(middle,style="Panel.TFrame",padding=10); panel.pack(side="left",fill="both",expand=True,padx=(0,10)); ttk.Label(panel,text="PARTITIONS",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); ttk.Label(panel,text="Filter by partition name; no selection means extract all.",background="#1f2937",foreground="#cbd5e1").pack(anchor="w",pady=(2,5)); filter_row=ttk.Frame(panel,style="Panel.TFrame"); filter_row.pack(fill="x",pady=(0,5)); self.partition_filter=tk.StringVar(); self.partition_filter.trace_add("write",lambda *_:self._refresh_partition_tree()); self.partition_filter_entry=ttk.Entry(filter_row,textvariable=self.partition_filter); self.partition_filter_entry.pack(side="left",fill="x",expand=True); ttk.Button(filter_row,text="Clear",command=lambda:self.partition_filter.set("")).pack(side="left",padx=(6,0)); actions=ttk.Frame(panel,style="Panel.TFrame"); actions.pack(fill="x",pady=5); ttk.Button(actions,text="Select all",command=lambda:self._select_all(True)).pack(side="left"); ttk.Button(actions,text="Select none",command=lambda:self._select_all(False)).pack(side="left",padx=5); self.partition_summary=tk.StringVar(value="0 partitions · 0 selected · 0 B selected"); ttk.Label(actions,textvariable=self.partition_summary,background="#1f2937",foreground="#cbd5e1").pack(side="right",padx=(8,0))
         self.tree=ttk.Treeview(panel,columns=("size",),show="tree headings",selectmode="none"); self.tree.heading("#0",text="Partition"); self.tree.heading("size",text="Size"); self.tree.column("#0",width=420,minwidth=260,stretch=True); self.tree.column("size",width=150,minwidth=130,anchor="e",stretch=False); self.tree.pack(fill="both",expand=True); self.tree.bind("<Button-1>",self._toggle)
         side=ttk.Frame(middle,style="Panel.TFrame",padding=14,width=300); side.pack(side="right",fill="y"); side.pack_propagate(False); ttk.Label(side,text="OPTIONS",background="#1f2937",foreground="#93c5fd",font=("Sans",16,"bold")).pack(anchor="w",pady=(0,8)); ttk.Separator(side).pack(fill="x",pady=(0,10)); ttk.Checkbutton(side,text="Generate SHA-256 fingerprints",variable=self.fingerprint,style="Large.TCheckbutton").pack(anchor="w",pady=(10,8)); ttk.Label(side,text="Creates a SHA-256 checksum for each extracted partition. This is separate from the backend’s OTA verification.",background="#1f2937",foreground="#cbd5e1",justify="left",wraplength=260,font=(self._ui_font,10 if os.name == "nt" else 12)).pack(anchor="w",pady=(4,16)); self.start_button=ttk.Button(side,text="Extract payload",command=self._start,style="Large.TButton"); self.start_button.pack(fill="x",pady=(8,8),ipady=5); self.cancel_button=ttk.Button(side,text="Cancel",command=self._cancel,state="disabled",style="Large.TButton"); self.cancel_button.pack(fill="x",ipady=5)
-        logbox=ttk.Frame(root,style="Panel.TFrame",padding=10); logbox.pack(fill="x",expand=False); ttk.Label(logbox,text="ACTIVITY LOG",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); self.log=tk.Text(logbox,bg="#0b1220",fg="#d1d5db",insertbackground="white",relief="flat",wrap="word",font=(self._mono_font,10),height=4); self.log.pack(fill="x",expand=False,pady=6); self.log.configure(state="disabled"); self.progress=ttk.Progressbar(logbox,mode="indeterminate"); self.progress.pack(fill="x",pady=(2,0)); ttk.Label(root,textvariable=self.status,style="Muted.TLabel").pack(anchor="w",pady=(7,0))
+        logbox=ttk.Frame(root,style="Panel.TFrame",padding=10); logbox.pack(fill="x",expand=False)
+        ttk.Label(logbox,text="ACTIVITY LOG",background="#1f2937",foreground="#93c5fd",
+                  font=(self._ui_font,10 if os.name == "nt" else 12,"bold")).pack(anchor="w")
+        log_frame=ttk.Frame(logbox,style="Panel.TFrame"); log_frame.pack(fill="x",expand=False,pady=6)
+        self.log=tk.Text(log_frame,bg="#0b1220",fg="#d1d5db",insertbackground="white",
+                         relief="flat",wrap="word",font=(self._mono_font,10),height=5,
+                         padx=8,pady=6)
+        log_scroll=ttk.Scrollbar(log_frame,orient="vertical",command=self.log.yview)
+        self.log.configure(yscrollcommand=log_scroll.set)
+        log_scroll.pack(side="right",fill="y")
+        self.log.pack(side="left",fill="both",expand=True)
+        self.log.configure(state="disabled")
+        self.progress=ttk.Progressbar(logbox,mode="indeterminate"); self.progress.pack(fill="x",pady=(2,0))
         self._refresh_storage_locations(); self._enable_drop(self); self._enable_drop(src); self._enable_drop(self.source_entry); self._enable_drop(root); self._append("Drag payload.bin or an OTA .zip onto the window, or type/paste its full path and choose Use typed path. Inspect to select individual partitions."); self._append("Backend: payload-dumper-go (Apache-2.0). Some delta OTA operations are unsupported.")
     def _show_device_workspace(self, mode):
         """Show only the controls appropriate for the selected device mode."""
@@ -1575,6 +1618,27 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.status.set(f"Output directory: {directory}")
         self._append(f"Output directory set to: {directory}")
 
+    def _open_output_directory(self):
+        """Open the current output directory in the platform file manager."""
+        raw = self.output.get().strip()
+        if not raw:
+            messagebox.showwarning("Output required", "Choose an output directory first.", parent=self)
+            return
+        path = Path(raw).expanduser()
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            if os.name == "nt":
+                os.startfile(str(path))
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(path)])
+            else:
+                subprocess.Popen(["xdg-open", str(path)])
+            self.status.set(f"Opened output folder: {path.name or path}")
+            self._append(f"Opened output directory: {path}")
+        except Exception as exc:
+            self._append(f"Could not open output directory: {exc}")
+            messagebox.showerror("Open folder failed", f"Could not open this folder:\n{path}\n\n{exc}", parent=self)
+
     def _browse_output(self):
         """Choose an output directory without passing an invalid Windows path."""
         raw = self.output.get().strip().strip('"').strip("'")
@@ -1603,10 +1667,10 @@ class PayloadDumperApp(TkinterDnD.Tk):
         try:self.events.put(("parts",inspect_source(src,progress=lambda x:self.events.put(("log",x)))));self.events.put(("info_done","Inspection complete."))
         except BackendError as e:self.events.put(("error",str(e)))
     def _load_parts(self,parts):
-        for i in self.tree.get_children():self.tree.delete(i)
         self.parts.clear();self.part_vars.clear()
         for part in parts:
-            n=str(part["name"]);self.parts[n]=part;self.part_vars[n]=tk.BooleanVar(value=False);self.tree.insert("","end",iid=n,text="☐  "+n,values=(self._size(int(part.get("size_bytes") or 0)),))
+            n=str(part["name"]);self.parts[n]=part;self.part_vars[n]=tk.BooleanVar(value=False)
+        self._refresh_partition_tree()
         self._append(f"Found {len(parts)} partitions.")
     @staticmethod
     def _size(n):
@@ -1614,12 +1678,37 @@ class PayloadDumperApp(TkinterDnD.Tk):
         for unit in ("B","KB","MB","GB","TB"):
             if v<1024 or unit=="TB":return f"{v:.1f} {unit}"
             v/=1024
+    def _refresh_partition_tree(self):
+        if not hasattr(self, "tree"):
+            return
+        query = self.partition_filter.get().strip().casefold() if hasattr(self, "partition_filter") else ""
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        for name, part in self.parts.items():
+            if query and query not in name.casefold():
+                continue
+            selected = self.part_vars[name].get()
+            self.tree.insert("", "end", iid=name, text=("☑  " if selected else "☐  ") + name,
+                             values=(self._size(int(part.get("size_bytes") or 0)),))
+        self._update_partition_summary()
+    def _update_partition_summary(self):
+        if not hasattr(self, "partition_summary"):
+            return
+        total = len(self.parts)
+        selected = [name for name, var in self.part_vars.items() if var.get()]
+        selected_bytes = sum(int(self.parts[name].get("size_bytes") or 0) for name in selected)
+        visible = len(self.tree.get_children())
+        self.partition_summary.set(f"{visible}/{total} shown · {len(selected)} selected · {self._size(selected_bytes)} selected")
     def _toggle(self,event):
         n=self.tree.identify_row(event.y)
         if n not in self.part_vars:return
-        v=not self.part_vars[n].get();self.part_vars[n].set(v);self.tree.item(n,text=("☑  " if v else "☐  ")+n);return "break"
+        v=not self.part_vars[n].get();self.part_vars[n].set(v);self.tree.item(n,text=("☑  " if v else "☐  ")+n);self._update_partition_summary();return "break"
     def _select_all(self,yes):
-        for n,var in self.part_vars.items():var.set(yes);self.tree.item(n,text=("☑  " if yes else "☐  ")+n)
+        query = self.partition_filter.get().strip().casefold()
+        for n,var in self.part_vars.items():
+            if not query or query in n.casefold():
+                var.set(yes)
+        self._refresh_partition_tree()
     def _start(self):
         if self.worker and self.worker.is_alive():return
         src=self.source.get().strip();out=self.output.get().strip()

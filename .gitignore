@@ -8,6 +8,11 @@ AppDir/
 *.rpm
 *.tar.zst
 
+# Local environment files and secrets
+.env
+.env.*
+!.env.example
+
 # Rust/CMake/Meson
 target/
 cmake-build-*/
