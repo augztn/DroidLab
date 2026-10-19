@@ -427,13 +427,63 @@ class PayloadDumperApp(TkinterDnD.Tk):
         ttk.Button(device, text="Refresh devices", command=self._refresh_fastboot_devices).grid(
             row=1, column=1, padx=(8, 0), pady=(5, 0))
 
-        controls = ttk.Frame(tab)
-        controls.grid(row=3, column=0, sticky="nsew", padx=(0, 10))
+        # Scrollable left workspace keeps every control reachable on short displays.
+        left_scroll = ttk.Frame(tab)
+        left_scroll.grid(row=3, column=0, sticky="nsew", padx=(0, 10))
+        left_scroll.columnconfigure(0, weight=1)
+        left_scroll.rowconfigure(0, weight=1)
+        controls_canvas = tk.Canvas(left_scroll, bg="#111827", highlightthickness=0, borderwidth=0)
+        controls_scrollbar = ttk.Scrollbar(left_scroll, orient="vertical", command=controls_canvas.yview)
+        controls_canvas.configure(yscrollcommand=controls_scrollbar.set)
+        controls_scrollbar.grid(row=0, column=1, sticky="ns")
+        controls_canvas.grid(row=0, column=0, sticky="nsew")
+        controls = ttk.Frame(controls_canvas)
+        controls_window = controls_canvas.create_window((0, 0), window=controls, anchor="nw")
         controls.columnconfigure(0, weight=1)
-        controls.rowconfigure(4, weight=1)
+        def _sync_controls_scrollregion(_event=None):
+            controls_canvas.configure(scrollregion=controls_canvas.bbox("all"))
+        def _fit_controls_width(event):
+            controls_canvas.itemconfigure(controls_window, width=event.width)
+        controls.bind("<Configure>", _sync_controls_scrollregion)
+        controls_canvas.bind("<Configure>", _fit_controls_width)
+        def _controls_mousewheel(event):
+            if getattr(event, "delta", 0):
+                controls_canvas.yview_scroll(int(-event.delta / 120), "units")
+            elif getattr(event, "num", None) == 4:
+                controls_canvas.yview_scroll(-1, "units")
+            elif getattr(event, "num", None) == 5:
+                controls_canvas.yview_scroll(1, "units")
+        controls_canvas.bind_all("<MouseWheel>", _controls_mousewheel)
+        controls_canvas.bind_all("<Button-4>", _controls_mousewheel)
+        controls_canvas.bind_all("<Button-5>", _controls_mousewheel)
+
+        action_row = ttk.Frame(controls)
+        action_row.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        action_row.columnconfigure(0, weight=1, uniform="fastboot_actions")
+        action_row.columnconfigure(1, weight=1, uniform="fastboot_actions")
+        reboot = ttk.Frame(action_row, style="Panel.TFrame", padding=10)
+        reboot.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+        ttk.Label(reboot, text="REBOOT CONTROLS", background="#1f2937", foreground="#93c5fd",
+                  font=("Sans", 11, "bold")).pack(anchor="w", pady=(0, 5))
+        ttk.Button(reboot, text="Reboot system", command=lambda: self._fastboot_quick_action(["reboot"])).pack(fill="x", pady=2)
+        ttk.Button(reboot, text="Reboot recovery", command=lambda: self._fastboot_quick_action(["reboot", "recovery"])).pack(fill="x", pady=2)
+        ttk.Button(reboot, text="Reboot bootloader", command=lambda: self._fastboot_quick_action(["reboot-bootloader"])).pack(fill="x", pady=2)
+        reference = ttk.Frame(action_row, style="Panel.TFrame", padding=10)
+        reference.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
+        ttk.Label(reference, text="ERASE & FORMAT", background="#1f2937", foreground="#fb923c",
+                  font=("Sans", 11, "bold")).pack(anchor="w", pady=(0, 5))
+        ttk.Button(reference, text="Erase cache", command=lambda: self._run_fastboot_maintenance("erase", "cache")).pack(fill="x", pady=2)
+        ttk.Button(reference, text="Erase userdata", command=lambda: self._run_fastboot_maintenance("erase", "userdata")).pack(fill="x", pady=2)
+        ttk.Button(reference, text="Wipe data (fastboot -w)", command=lambda: self._run_fastboot_maintenance("-w")).pack(fill="x", pady=2)
+        self.maintenance_command = tk.StringVar(value="Select an operation to preview its command.")
+        ttk.Label(reference, textvariable=self.maintenance_command, background="#0b1220", foreground="#f1f5f9",
+                  padding=7, justify="left", wraplength=320, font=("Monospace", 9)).pack(fill="x", pady=(5, 0))
+        self.maintenance_status = tk.StringVar(value="No maintenance command executed.")
+        ttk.Label(reference, textvariable=self.maintenance_status, background="#1f2937", foreground="#cbd5e1",
+                  wraplength=320, justify="left", font=("Sans", 9)).pack(anchor="w", pady=(5, 0))
 
         box = ttk.Frame(controls, style="Panel.TFrame", padding=12)
-        box.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        box.grid(row=1, column=0, sticky="ew", pady=(0, 8))
         ttk.Label(box, text="IMAGE FILE", background="#1f2937", foreground="#93c5fd",
                   font=("Sans", 10, "bold")).pack(anchor="w")
         image_row = ttk.Frame(box, style="Panel.TFrame")
@@ -447,7 +497,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self._enable_drop(tab)
 
         partition = ttk.Frame(controls, style="Panel.TFrame", padding=12)
-        partition.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+        partition.grid(row=2, column=0, sticky="ew", pady=(0, 8))
         ttk.Label(partition, text="TARGET PARTITION", background="#1f2937", foreground="#93c5fd",
                   font=("Sans", 10, "bold")).pack(anchor="w")
         self.flash_partition = tk.StringVar()
@@ -459,7 +509,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.partition_combo.pack(fill="x", pady=(5, 0))
 
         preview = ttk.Frame(controls, style="Panel.TFrame", padding=12)
-        preview.grid(row=2, column=0, sticky="ew", pady=(0, 8))
+        preview.grid(row=3, column=0, sticky="ew", pady=(0, 8))
         ttk.Label(preview, text="COMMAND PREVIEW", background="#1f2937", foreground="#93c5fd",
                   font=("Sans", 10, "bold")).pack(anchor="w")
         self.flash_command = tk.StringVar(value="Select an image, partition, and Fastboot device.")
@@ -469,15 +519,15 @@ class PayloadDumperApp(TkinterDnD.Tk):
         ttk.Label(controls,
                   text="FLASHING RISK · An incompatible image or incorrect partition can stop Android from booting. Verify compatibility before flashing.",
                   foreground="#fecaca", background="#2a1d27", wraplength=850, justify="left",
-                  font=("Sans", 10), padding=10).grid(row=3, column=0, sticky="ew", pady=(0, 8))
+                  font=("Sans", 10), padding=10).grid(row=4, column=0, sticky="ew", pady=(0, 8))
         flash_buttons = ttk.Frame(controls)
-        flash_buttons.grid(row=4, column=0, sticky="nw")
+        flash_buttons.grid(row=5, column=0, sticky="nw")
         ttk.Button(flash_buttons, text="Preview command", command=self._update_flash_preview).pack(side="left")
         ttk.Button(flash_buttons, text="Flash image…", command=self._flash_image).pack(side="left", padx=(7, 0))
 
         # Advanced commands live below the flashing controls, not under the console.
         manual = ttk.Frame(controls, style="Panel.TFrame", padding=12)
-        manual.grid(row=5, column=0, sticky="ew", pady=(10, 0))
+        manual.grid(row=6, column=0, sticky="ew", pady=(10, 0))
         ttk.Label(manual, text="ADVANCED FASTBOOT COMMAND", background="#1f2937",
                   foreground="#93c5fd", font=("Sans", 11, "bold")).pack(anchor="w")
         ttk.Label(manual, text="Run host-side commands such as fastboot devices, fastboot getvar all, or fastboot reboot. Paths with spaces are supported.",
@@ -493,46 +543,13 @@ class PayloadDumperApp(TkinterDnD.Tk):
             side="left", padx=(7, 0))
         self._enable_command_drop(self.fastboot_manual_entry, self.fastboot_manual_command, "fastboot")
 
-        # Right side: reboot controls beside destructive maintenance, with console below.
-        right = ttk.Frame(tab)
+        # The console owns the full right workspace height for continuous output visibility.
+        right = ttk.Frame(tab, style="Panel.TFrame", padding=10)
         right.grid(row=3, column=1, sticky="nsew")
         right.columnconfigure(0, weight=1)
-        right.rowconfigure(1, weight=1)
-        action_row = ttk.Frame(right)
-        action_row.grid(row=0, column=0, sticky="ew", pady=(0, 8))
-        action_row.columnconfigure(0, weight=1, uniform="fastboot_actions")
-        action_row.columnconfigure(1, weight=1, uniform="fastboot_actions")
-
-        reboot = ttk.Frame(action_row, style="Panel.TFrame", padding=10)
-        reboot.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
-        ttk.Label(reboot, text="REBOOT CONTROLS", background="#1f2937", foreground="#93c5fd",
-                  font=("Sans", 11, "bold")).pack(anchor="w", pady=(0, 5))
-        ttk.Button(reboot, text="Reboot system", command=lambda: self._fastboot_quick_action(["reboot"])).pack(
-            fill="x", pady=2)
-        ttk.Button(reboot, text="Reboot recovery", command=lambda: self._fastboot_quick_action(["reboot", "recovery"])).pack(
-            fill="x", pady=2)
-        ttk.Button(reboot, text="Reboot bootloader", command=lambda: self._fastboot_quick_action(["reboot-bootloader"])).pack(
-            fill="x", pady=2)
-
-        reference = ttk.Frame(action_row, style="Panel.TFrame", padding=10)
-        reference.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
-        ttk.Label(reference, text="ERASE & FORMAT", background="#1f2937", foreground="#fb923c",
-                  font=("Sans", 11, "bold")).pack(anchor="w", pady=(0, 5))
-        ttk.Button(reference, text="Erase cache", command=lambda: self._run_fastboot_maintenance("erase", "cache")).pack(
-            fill="x", pady=2)
-        ttk.Button(reference, text="Erase userdata", command=lambda: self._run_fastboot_maintenance("erase", "userdata")).pack(
-            fill="x", pady=2)
-        ttk.Button(reference, text="Wipe data (fastboot -w)", command=lambda: self._run_fastboot_maintenance("-w")).pack(
-            fill="x", pady=2)
-        self.maintenance_command = tk.StringVar(value="Select an operation to preview its command.")
-        ttk.Label(reference, textvariable=self.maintenance_command, background="#0b1220", foreground="#f1f5f9",
-                  padding=7, justify="left", wraplength=320, font=("Monospace", 9)).pack(fill="x", pady=(5, 0))
-        self.maintenance_status = tk.StringVar(value="No maintenance command executed.")
-        ttk.Label(reference, textvariable=self.maintenance_status, background="#1f2937", foreground="#cbd5e1",
-                  wraplength=320, justify="left", font=("Sans", 9)).pack(anchor="w", pady=(5, 0))
-
-        console_panel = ttk.Frame(right, style="Panel.TFrame", padding=10)
-        console_panel.grid(row=1, column=0, sticky="nsew")
+        right.rowconfigure(0, weight=1)
+        console_panel = ttk.Frame(right, style="Panel.TFrame", padding=2)
+        console_panel.grid(row=0, column=0, sticky="nsew")
         ttk.Label(console_panel, text="REAL-TIME CONSOLE / ACTIVITY", background="#1f2937",
                   foreground="#93c5fd", font=("Sans", 11, "bold")).pack(anchor="w", pady=(0, 5))
         fast_console_frame = ttk.Frame(console_panel, style="Panel.TFrame")
