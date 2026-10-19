@@ -48,14 +48,13 @@ jobs:
           PYTHONPATH: .
         run: python -m unittest discover -s tests -v
 
-      # Package distributable ZIPs only for version tags. Normal pushes and PRs
-      # test the code without creating/uploading downloadable build artifacts.
+      # Build a complete portable ZIP for each push/manual test build (but not PRs).
       - name: Build portable Windows executable and backend
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name != 'pull_request'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $version = $env:GITHUB_REF_NAME.Substring(1)
+          $version = if ($env:GITHUB_REF -like "refs/tags/v*") { $env:GITHUB_REF_NAME.Substring(1) } else { "0.1.0-ci.$env:GITHUB_RUN_NUMBER" }
           $bundle = "dist\DroidLab-$version-windows-${{ matrix.arch }}"
           python -m PyInstaller --noconfirm --clean --onefile --windowed --name DroidLab --distpath "$PWD\build\pyinstaller-dist" --workpath "$PWD\build\pyinstaller-work" --specpath "$PWD\build" --paths src --hidden-import=payload_dumper --hidden-import=tkinter.ttk --collect-all tkinterdnd2 src/app.py
           New-Item -ItemType Directory -Force -Path "$bundle\bin" | Out-Null
@@ -90,6 +89,15 @@ jobs:
           ADB and Fastboot are bundled when compatible platform-tools binaries are available; otherwise install matching Android SDK Platform-Tools and add adb.exe and fastboot.exe to PATH.
           "@ | Set-Content "$bundle\README-Windows.txt"
           Compress-Archive -Path $bundle -DestinationPath "${bundle}.zip" -Force
+
+      - name: Upload portable Windows ZIP for testing
+        if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: droidlab-windows-${{ matrix.arch }}
+          path: dist/DroidLab-*-windows-${{ matrix.arch }}.zip
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Share Windows ZIP to Telegram
         if: startsWith(github.ref, 'refs/tags/v')
