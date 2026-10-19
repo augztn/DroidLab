@@ -88,7 +88,7 @@ jobs:
           The matching payload-dumper-go backend is bundled in the bin folder.
           ADB and Fastboot are bundled when compatible platform-tools binaries are available; otherwise install matching Android SDK Platform-Tools and add adb.exe and fastboot.exe to PATH.
           "@ | Set-Content "$bundle\README-Windows.txt"
-          Compress-Archive -Path $bundle -DestinationPath "$bundle.zip" -Force
+          Compress-Archive -Path $bundle -DestinationPath "${bundle}.zip" -Force
       - name: Upload portable Windows bundle
         uses: actions/upload-artifact@v4
         with:
