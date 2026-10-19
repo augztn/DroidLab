@@ -321,7 +321,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         s.configure("TFrame", background="#0F1117")
         s.configure("Panel.TFrame", background="#1f2937", relief="solid",
                     borderwidth=1, bordercolor="#374151")
-        s.configure("TLabel", background="#111827", foreground="#e5e7eb",
+        s.configure("TLabel", background="#0F1117", foreground="#F3F4F6",
                     font=(font, 10 if os.name == "nt" else 13))
         s.configure("Title.TLabel", font=(font, 20, "bold"), foreground="#f8fafc")
         s.configure("Muted.TLabel", foreground="#cbd5e1")
@@ -407,14 +407,15 @@ class PayloadDumperApp(TkinterDnD.Tk):
                  font=(font, 17, "bold")).pack(anchor="w")
         tk.Label(brand_text, text="Android firmware toolkit · Extract · Diagnose · Maintain",
                  bg="#161922", fg="#94A3B8", font=(font, 9)).pack(anchor="w", pady=(1, 0))
-        status_card = tk.Frame(app_header, bg="#1e293b", padx=8, pady=4)
-        status_card.pack(side="right", padx=(8, 0), fill="y")
-        tk.Label(status_card, text="STATUS", bg="#1e293b", fg="#93c5fd",
-                 font=(font, 8 if os.name == "nt" else 9, "bold")).pack(anchor="w")
+        status_card = tk.Frame(app_header, bg="#1E222D", padx=10, pady=5,
+                              highlightthickness=1, highlightbackground="#2A3040")
+        status_card.pack(side="right", padx=(12, 0), anchor="center")
+        tk.Label(status_card, text="●", bg="#1E222D", fg="#10B981",
+                 font=(font, 10, "bold")).pack(side="left", padx=(0, 6))
         self.header_status_label = tk.Label(status_card, textvariable=self.status,
-                 bg="#1e293b", fg="#86efac", font=(font, 10 if os.name == "nt" else 11, "bold"),
-                 wraplength=300, justify="left")
-        self.header_status_label.pack(anchor="w", pady=(2, 0))
+                 bg="#1E222D", fg="#F3F4F6", font=(font, 9, "bold"),
+                 wraplength=420, justify="left")
+        self.header_status_label.pack(side="left")
 
         notebook=ttk.Notebook(self); notebook.pack(fill="both",expand=True,padx=6,pady=6)
         root=ttk.Frame(notebook,padding=8); notebook.add(root,text="Payload Extractor")
@@ -765,9 +766,9 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.sideload_file=tk.StringVar(); self.sideload_entry=ttk.Entry(row,textvariable=self.sideload_file); self.sideload_entry.pack(side="left",fill="x",expand=True,ipady=4)
         ttk.Button(row,text="Browse ZIP…",command=self._browse_sideload_zip).pack(side="left",padx=(7,0))
         ttk.Button(row,text="Sideload ZIP…",command=self._run_adb_sideload,style="Primary.TButton").pack(side="left",padx=(7,0))
-        drop_hint=ttk.Label(side,text="Drop a compatible flashable ZIP here, or use Browse ZIP…",background="#111827",foreground="#93c5fd",padding=8,wraplength=1100); drop_hint.pack(fill="x",pady=(7,0))
+        drop_hint=ttk.Label(side,text="⬇  Drop a flashable ZIP here or browse for a package.",background="#161922",foreground="#93c5fd",padding=7,wraplength=800); drop_hint.pack(fill="x",pady=(6,0))
         for drop_widget in (side, self.sideload_entry, drop_hint): self._enable_sideload_drop(drop_widget)
-        ttk.Label(side,text="Requires a recovery that supports ADB sideload. Verify ZIP compatibility before installing.",background="#1f2937",foreground="#cbd5e1",wraplength=800).pack(anchor="w",pady=(3,0))
+        ttk.Label(side,text="Recovery must support ADB sideload. Check package compatibility.",background="#1E222D",foreground="#94A3B8",wraplength=800).pack(anchor="w",pady=(3,0))
         shell=ttk.Frame(lower,style="Panel.TFrame",padding=6); shell.grid(row=2,column=0,sticky="nsew"); shell.columnconfigure(0,weight=1); shell.rowconfigure(2,weight=1)
         ttk.Label(shell,text="ADVANCED DEVICE SHELL",background="#1f2937",foreground="#93c5fd",font=("Sans",12,"bold")).grid(row=0,column=0,sticky="w")
         row=ttk.Frame(shell,style="Panel.TFrame"); row.grid(row=1,column=0,sticky="ew",pady=(5,7))
