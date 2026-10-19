@@ -1604,6 +1604,8 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self._append("Fastboot scan: " + (", ".join(devices) if devices else "no devices found"))
         if devices:
             self._show_device_workspace("fastboot")
+        # Refresh telemetry (including fastboot getvar current-slot) after every scan.
+        self._refresh_device_info()
 
     def _update_flash_preview(self):
         image = self.flash_image.get().strip().strip(chr(34)).strip(chr(39)); part = self.flash_partition.get().strip(); serial = self.fastboot_device.get().strip()
