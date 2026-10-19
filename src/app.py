@@ -407,14 +407,13 @@ class PayloadDumperApp(TkinterDnD.Tk):
                  font=(font, 17, "bold")).pack(anchor="w")
         tk.Label(brand_text, text="Android firmware toolkit · Extract · Diagnose · Maintain",
                  bg="#172554", fg="#bfdbfe", font=(font, 9 if os.name == "nt" else 11)).pack(anchor="w", pady=(2, 0))
-        status_card = tk.Frame(app_header, bg="#1e293b", padx=6, pady=3, width=190)
+        status_card = tk.Frame(app_header, bg="#1e293b", padx=8, pady=4)
         status_card.pack(side="right", padx=(8, 0), fill="y")
-        status_card.pack_propagate(False)
         tk.Label(status_card, text="STATUS", bg="#1e293b", fg="#93c5fd",
                  font=(font, 8 if os.name == "nt" else 9, "bold")).pack(anchor="w")
         self.header_status_label = tk.Label(status_card, textvariable=self.status,
                  bg="#1e293b", fg="#86efac", font=(font, 10 if os.name == "nt" else 11, "bold"),
-                 wraplength=170, width=22, justify="left")
+                 wraplength=300, justify="left")
         self.header_status_label.pack(anchor="w", pady=(2, 0))
 
         notebook=ttk.Notebook(self); notebook.pack(fill="both",expand=True,padx=6,pady=6)
@@ -489,8 +488,8 @@ class PayloadDumperApp(TkinterDnD.Tk):
 
     def _build_flash_tab(self, tab):
         """Build the Fastboot workspace with device-first selection and a live console."""
-        tab.columnconfigure(0, weight=3, uniform="fastboot_workspace")
-        tab.columnconfigure(1, weight=2, uniform="fastboot_workspace")
+        tab.columnconfigure(0, weight=1, uniform="fastboot_workspace")
+        tab.columnconfigure(1, weight=1, uniform="fastboot_workspace")
         tab.rowconfigure(2, weight=0, minsize=0)
         tab.rowconfigure(3, weight=1)
 
@@ -502,7 +501,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         # Device selector comes first so every later operation has a clear target.
         device = ttk.Frame(tab, style="Panel.TFrame", padding=5)
         device.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(0, 5))
-        device.columnconfigure(0, weight=1)
+        device.columnconfigure(0, weight=0)
         # Device details live beside the console, not beside the compact device picker.
         self.device_info_vars = {}
         self.device_info_mode = tk.StringVar(value="NO DEVICE")
@@ -510,7 +509,8 @@ class PayloadDumperApp(TkinterDnD.Tk):
                   font=("Sans", 10, "bold")).grid(row=0, column=0, sticky="w")
         self.fastboot_device = tk.StringVar()
         self.device_combo = ttk.Combobox(device, textvariable=self.fastboot_device, state="readonly")
-        self.device_combo.grid(row=1, column=0, sticky="ew", pady=(3, 0))
+        self.device_combo.configure(width=18)
+        self.device_combo.grid(row=1, column=0, sticky="w", pady=(3, 0))
         ttk.Button(device, text="Refresh devices", command=self._refresh_fastboot_devices).grid(
             row=1, column=1, padx=(5, 0), pady=(3, 0))
 
@@ -703,15 +703,15 @@ class PayloadDumperApp(TkinterDnD.Tk):
         device=ttk.Frame(tab,style="Panel.TFrame",padding=6); device.grid(row=2,column=0,sticky="ew",pady=(0,6))
         ttk.Label(device,text="ADB DEVICE",background="#1f2937",foreground="#93c5fd").pack(anchor="w")
         row=ttk.Frame(device,style="Panel.TFrame"); row.pack(fill="x",pady=(5,0))
-        self.adb_device=tk.StringVar(); self.adb_device_combo=ttk.Combobox(row,textvariable=self.adb_device,state="readonly"); self.adb_device_combo.pack(side="left",fill="x",expand=True)
+        self.adb_device=tk.StringVar(); self.adb_device_combo=ttk.Combobox(row,textvariable=self.adb_device,state="readonly"); self.adb_device_combo.configure(width=18); self.adb_device_combo.pack(side="left",anchor="w")
         ttk.Button(row,text="Refresh devices",command=self._refresh_adb_devices).pack(side="left",padx=(8,0))
         self.adb_device_status=tk.StringVar(value="Connect device or enter recovery sideload mode, then refresh.")
         self.device_mode_status = tk.StringVar(value="MODE DETECTOR: Waiting for device scan")
         ttk.Label(device,textvariable=self.device_mode_status,background="#1f2937",foreground="#86efac",
                   wraplength=1000,font=("Sans",10,"bold")).pack(anchor="w",pady=(6,0))
-        ttk.Label(device,textvariable=self.adb_device_status,background="#1f2937",foreground="#cbd5e1",wraplength=1000).pack(anchor="w",pady=(3,0))
+        ttk.Label(device,textvariable=self.adb_device_status,background="#1f2937",foreground="#cbd5e1",wraplength=650).pack(anchor="w",pady=(2,0))
         # Controls remain on the left; device info and an expanded console share the right column.
-        workspace=ttk.Frame(tab); workspace.grid(row=3,column=0,sticky="nsew"); workspace.columnconfigure(0,weight=3,uniform="adb_workspace"); workspace.columnconfigure(1,weight=2,uniform="adb_workspace"); workspace.rowconfigure(0,weight=1)
+        workspace=ttk.Frame(tab); workspace.grid(row=3,column=0,sticky="nsew"); workspace.columnconfigure(0,weight=1,uniform="adb_workspace"); workspace.columnconfigure(1,weight=1,uniform="adb_workspace"); workspace.rowconfigure(0,weight=1)
         lower=ttk.Frame(workspace); lower.grid(row=0,column=0,sticky="nsew",padx=(0,10)); lower.columnconfigure(0,weight=1); lower.rowconfigure(2,weight=1)
         right=ttk.Frame(workspace); right.grid(row=0,column=1,sticky="nsew"); right.columnconfigure(0,weight=1); right.rowconfigure(1,weight=1)
         adb_info = ttk.Frame(right, style="Panel.TFrame", padding=6)
@@ -765,7 +765,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         ttk.Button(row,text="Sideload ZIP…",command=self._run_adb_sideload,style="Primary.TButton").pack(side="left",padx=(7,0))
         drop_hint=ttk.Label(side,text="Drop a compatible flashable ZIP here, or use Browse ZIP…",background="#111827",foreground="#93c5fd",padding=8,wraplength=1100); drop_hint.pack(fill="x",pady=(7,0))
         for drop_widget in (side, self.sideload_entry, drop_hint): self._enable_sideload_drop(drop_widget)
-        ttk.Label(side,text="Boot into a compatible recovery and choose Apply update from ADB (or its equivalent). Select the device marked [sideload]. Compatible packages may include OTA updates, custom ROMs, Magisk, kernels, or mods. Verify the package and recovery instructions for your exact device; not every ZIP supports sideload.",background="#1f2937",foreground="#cbd5e1",wraplength=1100).pack(anchor="w",pady=(5,0))
+        ttk.Label(side,text="Requires a recovery that supports ADB sideload. Verify ZIP compatibility before installing.",background="#1f2937",foreground="#cbd5e1",wraplength=800).pack(anchor="w",pady=(3,0))
         shell=ttk.Frame(lower,style="Panel.TFrame",padding=6); shell.grid(row=2,column=0,sticky="nsew"); shell.columnconfigure(0,weight=1); shell.rowconfigure(2,weight=1)
         ttk.Label(shell,text="ADVANCED DEVICE SHELL",background="#1f2937",foreground="#93c5fd",font=("Sans",12,"bold")).grid(row=0,column=0,sticky="w")
         row=ttk.Frame(shell,style="Panel.TFrame"); row.grid(row=1,column=0,sticky="ew",pady=(5,7))
