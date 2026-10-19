@@ -1152,6 +1152,9 @@ class PayloadDumperApp(TkinterDnD.Tk):
                 return
         self._append("Executing manual Fastboot command: " + rendered)
         self.status.set("Running Fastboot command…")
+        # Only reboot changes USB mode. Do not trigger repeated device scans
+        # for harmless commands such as getvar, devices, or flashing.
+        self._rescan_after_mode_change = bool(tokens and tokens[0].lower() == "reboot")
         threading.Thread(target=self._adb_task, args=(command, 900, "fastboot_manual"), daemon=True).start()
 
     def _enable_command_drop(self, widget, variable, tool):
