@@ -4,11 +4,12 @@ from __future__ import annotations
 import os, queue, threading, tkinter as tk, shutil, re, shlex, sys, json
 import subprocess, webbrowser, logging, platform
 from logging.handlers import RotatingFileHandler
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, font as tkfont, messagebox, ttk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from pathlib import Path
 from payload_dumper import BackendError, extract, inspect_source, sha256_file
 from command_guards import is_destructive_adb, is_destructive_fastboot, is_valid_partition_name
+from ui_metrics import column_width, tree_row_height
 
 def _windows_process_options():
     """Keep ADB/Fastboot subprocesses from flashing console windows on Windows."""
@@ -207,7 +208,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         style.configure("TCheckbutton", background=t["panel"], foreground=t["text"])
         style.configure("TRadiobutton", background=t["panel"], foreground=t["text"])
         style.configure("Treeview", background=t["input"], fieldbackground=t["input"],
-                        foreground=t["text"], bordercolor=t["border"], rowheight=27)
+                        foreground=t["text"], bordercolor=t["border"])
         style.configure("Treeview.Heading", background=t["panel_alt"], foreground=t["text"])
         style.map("Treeview", background=[("selected", t["accent2"])],
                   foreground=[("selected", "#ffffff")])
@@ -629,12 +630,15 @@ class PayloadDumperApp(TkinterDnD.Tk):
               fieldbackground=[("readonly", "#0b1220"), ("focus", "#0b1220")],
               foreground=[("readonly", "#f1f5f9")],
               bordercolor=[("focus", "#3b82f6")])
+        # Derive raw-pixel row height from Tk font metrics for HiDPI displays.
+        self._tree_font = (font, 10 if os.name == "nt" else 12)
+        self._tree_heading_font = (font, 10 if os.name == "nt" else 12, "bold")
         s.configure("Treeview", background="#0b1220", fieldbackground="#0b1220",
                     foreground="#f1f5f9", bordercolor="#374151",
-                    rowheight=32 if os.name == "nt" else 38,
-                    font=(font, 10 if os.name == "nt" else 12))
+                    rowheight=tree_row_height(tkfont.Font(self, font=self._tree_font).metrics("linespace")),
+                    font=self._tree_font)
         s.configure("Treeview.Heading", background="#263449", foreground="#f8fafc",
-                    font=(font, 10 if os.name == "nt" else 12, "bold"), padding=(9, 8),
+                    font=self._tree_heading_font, padding=(9, 8),
                     relief="flat")
         s.map("Treeview", background=[("selected", "#1d4ed8")],
               foreground=[("selected", "#ffffff")])
@@ -791,8 +795,15 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.tree.column("#0", width=320, minwidth=200, stretch=True, anchor="w")
         # Tkinter has no ResizeToContents mode; use a compact fixed-width,
         # right-aligned size column and prevent it from taking extra space.
-        self.tree.column("size", width=100, minwidth=90, anchor="e", stretch=False)
+        # Size values and their heading must fit even when display scaling is high.
+        size_font = tkfont.Font(self, font=self._tree_font)
+        heading_font = tkfont.Font(self, font=self._tree_heading_font)
+        size_width = column_width(max(size_font.measure("1023.9 MB"), heading_font.measure("Size")), minimum=100)
+        self.tree.column("size", width=size_width, minwidth=size_width, anchor="e", stretch=False)
+        tree_scroll = ttk.Scrollbar(panel, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=tree_scroll.set)
         self.tree.grid(row=2, column=0, sticky="nsew")
+        tree_scroll.grid(row=2, column=1, sticky="ns")
         self.tree.bind("<Button-1>", self._toggle)
 
         logbox=ttk.Frame(left,style="Panel.TFrame",padding=8)
