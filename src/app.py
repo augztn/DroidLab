@@ -9,7 +9,7 @@ from tkinterdnd2 import DND_FILES, TkinterDnD
 from pathlib import Path
 from payload_dumper import BackendError, extract, inspect_source, sha256_file
 from command_guards import (is_destructive_adb, is_destructive_fastboot, is_valid_partition_name,
-                            validate_device_selector)
+                            validate_device_selector, is_fastboot_target_connected)
 from ui_metrics import column_width, tree_row_height
 try:
     from .process_runner import ProcessCancelledError, run_streaming
@@ -1429,11 +1429,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
                             probe = subprocess.run([binary, "devices", "-l"], capture_output=True,
                                 text=True, encoding="utf-8", errors="replace", timeout=8,
                                 check=False, **_windows_process_options())
-                            connected = {
-                                item.split()[0] for item in probe.stdout.splitlines()
-                                if len(item.split()) >= 2 and item.split()[1].lower() == "fastboot"
-                            }
-                            if probe.returncode != 0 or serial not in connected:
+                            if not is_fastboot_target_connected(serial, probe.stdout, probe.returncode):
                                 raise RuntimeError(
                                     "Fastboot target %r is no longer present in the fresh device scan."
                                     % serial
@@ -1686,11 +1682,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
                         encoding="utf-8", errors="replace", timeout=8, check=False,
                         **_windows_process_options()
                     )
-                    connected = {
-                        line.split()[0] for line in probe.stdout.splitlines()
-                        if len(line.split()) >= 2 and line.split()[1].lower() == "fastboot"
-                    }
-                    if probe.returncode != 0 or target_serial not in connected:
+                    if not is_fastboot_target_connected(target_serial, probe.stdout, probe.returncode):
                         raise RuntimeError(
                             "Fastboot target %r is no longer present in the fresh device scan. "
                             "Refresh devices, verify the target, and retry. Probe output: %s"
