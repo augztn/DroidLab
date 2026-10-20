@@ -10,7 +10,10 @@ import tempfile
 import threading
 from pathlib import Path
 from typing import Callable
-from process_runner import ProcessCancelledError, run_streaming, terminate_process
+if __package__:
+    from .process_runner import ProcessCancelledError, run_streaming, terminate_process
+else:
+    from process_runner import ProcessCancelledError, run_streaming, terminate_process
 
 Progress = Callable[[str], None]
 
