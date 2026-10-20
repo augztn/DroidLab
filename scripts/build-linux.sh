@@ -84,5 +84,10 @@ cp "$APPDIR/usr/share/icons/hicolor/scalable/apps/droidlab.svg" "$APPDIR/droidla
 printf "%s\n" "$VERSION" > "$APPDIR/VERSION"; printf "%s\n" "$ARCH" > "$APPDIR/ARCH"
 wget -q "https://raw.githubusercontent.com/ssut/payload-dumper-go/${BACKEND_VERSION}/LICENSE" -O "$APPDIR/usr/share/licenses/payload-dumper-go/LICENSE"
 if ! command -v appimagetool >/dev/null; then echo "appimagetool not found; AppDir prepared at $APPDIR" >&2; exit 2; fi
-ARCH="$ARCH" appimagetool "$APPDIR" "$DIST_DIR/${APP_NAME}-${VERSION}-${ARCH}.AppImage"
+APPIMAGE_ARGS=()
+if [[ -n "${APPIMAGE_RUNTIME_FILE:-}" ]]; then
+  [[ -f "$APPIMAGE_RUNTIME_FILE" ]] || { echo "Pinned AppImage runtime not found: $APPIMAGE_RUNTIME_FILE" >&2; exit 1; }
+  APPIMAGE_ARGS+=(--runtime-file "$APPIMAGE_RUNTIME_FILE")
+fi
+ARCH="$ARCH" appimagetool "${APPIMAGE_ARGS[@]}" "$APPDIR" "$DIST_DIR/${APP_NAME}-${VERSION}-${ARCH}.AppImage"
 echo "Created $DIST_DIR/${APP_NAME}-${VERSION}-${ARCH}.AppImage"
