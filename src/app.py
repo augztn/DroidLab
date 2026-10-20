@@ -1696,15 +1696,18 @@ class PayloadDumperApp(TkinterDnD.Tk):
                 if line is None:
                     stream_closed = True
                 else:
+                    line_dropped = False
                     if retained_output_chars + len(line) <= max_retained_output_chars:
                         output_lines.append(line)
                         retained_output_chars += len(line)
                     else:
-                        dropped_console_lines += 1
+                        line_dropped = True
                     if console_lines_sent < 5000:
                         self.events.put(("console_line", (kind, line)))
                         console_lines_sent += 1
                     else:
+                        line_dropped = True
+                    if line_dropped:
                         dropped_console_lines += 1
             code = process.wait()
             output = "".join(output_lines).strip() or "Exit status: " + str(code)
