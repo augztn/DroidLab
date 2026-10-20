@@ -59,23 +59,6 @@ THEME_TOKENS = {
         "warning": "#f59e0b",
         "danger": "#f87171"
     },
-    "standard_light": {
-        "label": "Standard Light",
-        "bg": "#f1f5f9",
-        "panel": "#ffffff",
-        "panel_alt": "#e2e8f0",
-        "border": "#cbd5e1",
-        "text": "#0f172a",
-        "muted": "#64748b",
-        "input": "#ffffff",
-        "accent": "#2563eb",
-        "accent2": "#7c3aed",
-        "button": "#e2e8f0",
-        "console": "#f8fafc",
-        "success": "#047857",
-        "warning": "#b45309",
-        "danger": "#b91c1c"
-    },
     "oled_black": {
         "label": "OLED Black",
         "bg": "#000000",
@@ -323,7 +306,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         panel.pack(fill="both", expand=True, padx=12, pady=12)
         tk.Label(panel, text="APPEARANCE", bg=t["panel"], fg=t["text"], font=(self._ui_font, 13, "bold")).pack(anchor="w")
         tk.Label(panel, text="Changes apply immediately and persist across launches.", bg=t["panel"], fg=t["muted"]).pack(anchor="w", pady=(3, 12))
-        for name, desc in (("cyberpunk_glass", "Cyberpunk Neon — cyan / purple"), ("standard_dark", "Standard Dark — neutral slate"), ("standard_light", "Standard Light — bright surfaces"), ("oled_black", "OLED Black — pitch black")):
+        for name, desc in (("cyberpunk_glass", "Cyberpunk Neon — cyan / purple"), ("standard_dark", "Standard Dark — neutral slate"), ("oled_black", "OLED Black — pitch black")):
             tk.Button(panel, text=("✓  " if name == self.theme_name else "    ") + name + " — " + desc,
                       command=lambda n=name, d=dialog: (self._apply_theme(n), d.destroy()),
                       anchor="w", bg=t["button"], fg=t["text"], activebackground=t["accent2"],
