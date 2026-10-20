@@ -1671,14 +1671,35 @@ class PayloadDumperApp(TkinterDnD.Tk):
                                        errors="replace", bufsize=1, **_windows_process_options())
             # A dedicated reader avoids blocking the timeout loop on readline() when
             # a tool stays silent. Queue and thread usage is portable across Windows/Linux.
-            lines = Queue()
+            # Bound the cross-thread buffer as well as retained diagnostics.
+            # Keep draining the OS pipe when the consumer falls behind to avoid
+            # blocking the child process on a full queue.
+            lines = Queue(maxsize=1000)
+            dropped_reader_lines = 0
+            dropped_reader_lock = threading.Lock()
 
             def read_output():
+                nonlocal dropped_reader_lines
                 try:
                     for line in process.stdout:
-                        lines.put(line)
+                        try:
+                            lines.put_nowait(line)
+                        except queue.Full:
+                            with dropped_reader_lock:
+                                dropped_reader_lines += 1
                 finally:
-                    lines.put(None)
+                    # Deliver EOF even when the queue is full.
+                    while True:
+                        try:
+                            lines.put_nowait(None)
+                            break
+                        except queue.Full:
+                            try:
+                                lines.get_nowait()
+                                with dropped_reader_lock:
+                                    dropped_reader_lines += 1
+                            except queue.Empty:
+                                continue
 
             reader = threading.Thread(target=read_output, name="DroidLab-CommandOutput", daemon=True)
             reader.start()
@@ -1710,6 +1731,9 @@ class PayloadDumperApp(TkinterDnD.Tk):
                     if line_dropped:
                         dropped_console_lines += 1
             code = process.wait()
+            with dropped_reader_lock:
+                reader_drops = dropped_reader_lines
+            dropped_console_lines += reader_drops
             output = "".join(output_lines).strip() or "Exit status: " + str(code)
             if dropped_console_lines:
                 summary = "[DroidLab] Output truncated: %s additional output line(s) omitted.\n" % dropped_console_lines
