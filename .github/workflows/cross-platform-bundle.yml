@@ -64,7 +64,7 @@ jobs:
           $platformToolsZip = "$env:RUNNER_TEMP\platform-tools.zip"
           Invoke-WebRequest -Uri "https://dl.google.com/android/repository/platform-tools_r37.0.1-win.zip" -OutFile $platformToolsZip
           $platformToolsHash = (Get-FileHash $platformToolsZip -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($platformToolsHash -ne "84df1e5628bc7e6a9f2bf750ab98c591a99a6d622fd48f789cf278336bab5b99") { throw "Android platform-tools SHA-256 mismatch" }
+          if ($platformToolsHash -ne "45f4d63113e895ebde0c90f194099a4676b6ac653bd28d54314a9e022bbc1a99") { throw "Android platform-tools SHA-256 mismatch" }
           Expand-Archive -Path $platformToolsZip -DestinationPath "$env:RUNNER_TEMP\android-tools" -Force
           $toolsDir = Join-Path "$env:RUNNER_TEMP\android-tools" "platform-tools"
           if ((Test-Path "$toolsDir\adb.exe") -and (Test-Path "$toolsDir\fastboot.exe")) {
