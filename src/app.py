@@ -8,7 +8,7 @@ from tkinter import filedialog, font as tkfont, messagebox, ttk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from pathlib import Path
 from payload_dumper import BackendError, extract, inspect_source, sha256_file
-from command_guards import is_destructive_adb, is_destructive_fastboot, is_valid_partition_name
+from command_guards import (is_destructive_adb, is_destructive_fastboot, is_valid_partition_name,\n                            validate_device_selector)
 from ui_metrics import column_width, tree_row_height
 
 def _windows_process_options():
@@ -1713,10 +1713,27 @@ class PayloadDumperApp(TkinterDnD.Tk):
             # target it automatically for commands other than device discovery.
             discovery = args[0] in ("devices", "version", "help")
             selected = self._adb_require(("device",)) if not discovery else None
-            if selected and not any(args[i] == "-s" for i in range(min(len(args), 3))):
-                args = ["-s", selected[1]] + args
+            if not discovery:
+                if not selected:
+                    return
+                try:
+                    explicit = validate_device_selector(args, "adb", selected[1])
+                except ValueError as exc:
+                    messagebox.showerror("Device target conflict", str(exc))
+                    self._append("ADB command rejected: " + str(exc))
+                    return
+                if explicit is None:
+                    args = ["-s", selected[1]] + args
             command = [binary] + args
-            if is_destructive_adb(tokens) and not messagebox.askyesno("Confirm ADB command", "This command can change device state:\n\n" + text + "\n\nContinue?", icon="warning"):
+            target_label = selected[1] if selected else "no device (discovery/help command)"
+            if not messagebox.askyesno(
+                "Confirm advanced ADB command",
+                "Advanced ADB commands are unrestricted and cannot be proven safe.\\n\\n"
+                + "Executable: " + binary + "\\nTarget: " + target_label + "\\nArguments: "
+                + " ".join(shlex.quote(x) for x in args)
+                + "\\n\\nCommands may irreversibly modify device data. Continue?",
+                icon="warning",
+            ):
                 self._append("ADB command cancelled by user.")
                 return
             self._append("Running host ADB command: " + " ".join(shlex.quote(x) for x in command))
@@ -1727,7 +1744,14 @@ class PayloadDumperApp(TkinterDnD.Tk):
         if not selected:
             return
         binary, serial = selected
-        if is_destructive_adb(["shell"] + tokens) and not messagebox.askyesno("Confirm potentially destructive shell command", "This command may change device state or delete data:\n\n" + text + "\n\nRun it on " + serial + "?", icon="warning"):
+        if not messagebox.askyesno(
+            "Confirm advanced device-shell command",
+            "Device-shell commands are unrestricted and cannot be proven safe.\\n\\n"
+            + "Executable: " + binary + "\\nTarget: " + serial + "\\nArguments: "
+            + " ".join(shlex.quote(x) for x in tokens)
+            + "\\n\\nThis command may irreversibly modify device data. Continue?",
+            icon="warning",
+        ):
             self._append("Device-shell command cancelled by user.")
             return
         self._append("Running device shell command on " + serial + ": " + text)
@@ -1771,14 +1795,30 @@ class PayloadDumperApp(TkinterDnD.Tk):
             if shared and shared[1] == "fastboot":
                 serial = shared[0]
         discovery = tokens[0] in ("devices", "help", "--help", "--version", "version")
-        if serial and not discovery and not any(tokens[i] == "-s" for i in range(min(len(tokens), 3))):
-            tokens = ["-s", serial] + tokens
+        if not discovery:
+            if not serial:
+                messagebox.showerror("Device required", "Select a Fastboot device before running a device command.")
+                return
+            try:
+                explicit = validate_device_selector(tokens, "fastboot", serial)
+            except ValueError as exc:
+                messagebox.showerror("Device target conflict", str(exc))
+                self._append("Fastboot command rejected: " + str(exc))
+                return
+            if explicit is None:
+                tokens = ["-s", serial] + tokens
         command = [binary] + tokens
         rendered = " ".join(shlex.quote(x) for x in command)
-        if is_destructive_fastboot(tokens):
-            if not messagebox.askyesno("Confirm potentially destructive Fastboot command", "Verify the connected device, image, and partition before continuing.\n\n" + rendered + "\n\nThis operation may erase data or make the device unbootable. Continue?", icon="warning"):
-                self._append("Manual Fastboot command cancelled: " + rendered)
-                return
+        if not messagebox.askyesno(
+            "Confirm advanced Fastboot command",
+            "Advanced Fastboot commands are unrestricted and cannot be proven safe.\\n\\n"
+            + "Executable: " + binary + "\\nTarget: " + (serial or "no device (discovery/help command)")
+            + "\\nArguments: " + " ".join(shlex.quote(x) for x in tokens)
+            + "\\n\\nCommands may erase data or make the device unbootable. Continue?",
+            icon="warning",
+        ):
+            self._append("Manual Fastboot command cancelled: " + rendered)
+            return
         self._append("Executing manual Fastboot command: " + rendered)
         self.status.set("Running Fastboot command…")
         # Only reboot changes USB mode. Do not trigger repeated device scans
