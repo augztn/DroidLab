@@ -184,6 +184,9 @@ class PayloadDumperApp(TkinterDnD.Tk):
         style.configure("TFrame", background=t["bg"])
         style.configure("Panel.TFrame", background=t["panel"], bordercolor=t["border"], relief="flat")
         style.configure("TLabel", background=t["bg"], foreground=t["text"])
+        style.configure("PanelHeading.TLabel", background=t["panel"], foreground=t["accent"],
+                        font=(self._ui_font, 10, "bold"))
+        style.configure("PanelMuted.TLabel", background=t["panel"], foreground=t["muted"])
         style.configure("Title.TLabel", background=t["bg"], foreground=t["text"])
         style.configure("Muted.TLabel", background=t["bg"], foreground=t["muted"])
         style.configure("TButton", background=t["button"], foreground=t["text"],
@@ -790,13 +793,12 @@ class PayloadDumperApp(TkinterDnD.Tk):
         action_row = ttk.Frame(side, style="Panel.TFrame")
         action_row.grid(row=5, column=0, sticky="ew", pady=(12, 0))
         action_row.columnconfigure(0, weight=1)
-        action_row.columnconfigure(1, weight=1)
         self.start_button = ttk.Button(action_row, text="Extract payload", command=self._start,
                                        style="Large.TButton")
-        self.start_button.grid(row=0, column=0, sticky="ew", padx=(0, 5), ipady=5)
+        self.start_button.grid(row=0, column=0, sticky="ew", pady=(0, 7), ipady=5)
         self.cancel_button = ttk.Button(action_row, text="Cancel", command=self._cancel,
                                          state="disabled", style="Danger.TButton")
-        self.cancel_button.grid(row=0, column=1, sticky="ew", padx=(5, 0), ipady=5)
+        self.cancel_button.grid(row=1, column=0, sticky="ew", ipady=4)
         self._apply_theme(self.theme_name)
         self._refresh_storage_locations(); self._enable_drop(self); self._enable_drop(src); self._enable_drop(self.source_entry); self._enable_drop(root); self._append("Drag payload.bin or an OTA .zip onto the window, or type/paste its full path and choose Use typed path. Inspect to select individual partitions."); self._append("Backend: payload-dumper-go (Apache-2.0). Some delta OTA operations are unsupported.")
     def _show_device_workspace(self, mode, manual=False):
