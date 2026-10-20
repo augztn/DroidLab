@@ -11,6 +11,10 @@ from payload_dumper import BackendError, extract, inspect_source, sha256_file
 from command_guards import (is_destructive_adb, is_destructive_fastboot, is_valid_partition_name,
                             validate_device_selector)
 from ui_metrics import column_width, tree_row_height
+try:
+    from .process_runner import ProcessCancelledError, run_streaming
+except ImportError:  # direct execution from the src directory
+    from process_runner import ProcessCancelledError, run_streaming
 
 def _windows_process_options():
     """Keep ADB/Fastboot subprocesses from flashing console windows on Windows."""
@@ -1692,85 +1696,27 @@ class PayloadDumperApp(TkinterDnD.Tk):
                             "Refresh devices, verify the target, and retry. Probe output: %s"
                             % (target_serial, (probe.stdout + "\n" + probe.stderr).strip())
                         )
-            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                       stdin=subprocess.DEVNULL, text=True, encoding="utf-8",
-                                       errors="replace", bufsize=1, **_windows_process_options())
-            # A dedicated reader avoids blocking the timeout loop on readline() when
-            # a tool stays silent. Queue and thread usage is portable across Windows/Linux.
-            # Bound the cross-thread buffer as well as retained diagnostics.
-            # Keep draining the OS pipe when the consumer falls behind to avoid
-            # blocking the child process on a full queue.
-            lines = Queue(maxsize=1000)
-            dropped_reader_lines = 0
-            dropped_reader_lock = threading.Lock()
+            console_lines_sent = 0
+            def publish_line(line):
+                nonlocal console_lines_sent
+                if console_lines_sent < 5000:
+                    self.events.put(("console_line", (kind, line)))
+                    console_lines_sent += 1
 
-            def read_output():
-                nonlocal dropped_reader_lines
-                try:
-                    for line in process.stdout:
-                        try:
-                            lines.put_nowait(line)
-                        except queue.Full:
-                            with dropped_reader_lock:
-                                dropped_reader_lines += 1
-                finally:
-                    # Deliver EOF even when the queue is full.
-                    while True:
-                        try:
-                            lines.put_nowait(None)
-                            break
-                        except queue.Full:
-                            try:
-                                lines.get_nowait()
-                                with dropped_reader_lock:
-                                    dropped_reader_lines += 1
-                            except queue.Empty:
-                                continue
-
-            reader = threading.Thread(target=read_output, name="DroidLab-CommandOutput", daemon=True)
-            reader.start()
-            deadline = time.monotonic() + timeout
-            stream_closed = False
-            while not stream_closed:
-                if time.monotonic() >= deadline and process.poll() is None:
-                    process.kill()
-                    try:
-                        process.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        logging.error("Command process did not exit promptly after kill: %s", rendered)
-                    raise subprocess.TimeoutExpired(command, timeout)
-                try:
-                    line = lines.get(timeout=min(0.15, max(0.01, deadline - time.monotonic())))
-                except Empty:
-                    continue
-                if line is None:
-                    stream_closed = True
-                else:
-                    line_dropped = False
-                    if retained_output_chars + len(line) <= max_retained_output_chars:
-                        output_lines.append(line)
-                        retained_output_chars += len(line)
-                    else:
-                        line_dropped = True
-                    if console_lines_sent < 5000:
-                        self.events.put(("console_line", (kind, line)))
-                        console_lines_sent += 1
-                    else:
-                        line_dropped = True
-                    if line_dropped:
-                        dropped_console_lines += 1
-            code = process.wait()
-            with dropped_reader_lock:
-                reader_drops = dropped_reader_lines
-            dropped_console_lines += reader_drops
-            output = "".join(output_lines).strip() or "Exit status: " + str(code)
-            if dropped_console_lines:
-                summary = "[DroidLab] Output truncated: %s additional output line(s) omitted.\n" % dropped_console_lines
-                output += "\n" + summary.strip()
-                self.events.put(("console_line", (kind, summary)))
+            result = run_streaming(
+                command,
+                timeout=timeout,
+                cancel_event=self.cancel_event,
+                on_line=publish_line,
+                max_output_chars=2 * 1024 * 1024,
+                max_queue_lines=1000,
+                popen_kwargs=_windows_process_options(),
+            )
+            code = result.returncode
+            output = result.stdout.strip() or "Exit status: " + str(code)
             self.events.put(("console_line", (kind, "[DroidLab] Process exited with code " + str(code) + "\n")))
             self.events.put(("adb_result", (kind, code, output)))
-        except (OSError, subprocess.TimeoutExpired, ValueError, RuntimeError) as exc:
+        except (OSError, subprocess.TimeoutExpired, ValueError, RuntimeError, ProcessCancelledError) as exc:
             if process and process.poll() is None:
                 process.kill()
                 try:
