@@ -31,8 +31,8 @@ jobs:
             backend_arch: arm64
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
           architecture: ${{ matrix.python_arch }}
@@ -60,15 +60,20 @@ jobs:
           Copy-Item "build\pyinstaller-dist\DroidLab.exe" "$bundle\DroidLab.exe"
           $backendVersion = "2.1.0"
           $archive = "payload-dumper-go_$($backendVersion)_windows_${{ matrix.backend_arch }}.tar.gz"
+          $expectedBackendHash = if ("${{ matrix.backend_arch }}" -eq "amd64") { "45483c54bdd9219b8dcdb757256e7ce7a2bf9552d0e43f32e03389a1f0c55b15" } else { "254b4844c6e57b7205957832003920fba14d2336e69e8405416f4ad3978cfc35" }
           $url = "https://github.com/ssut/payload-dumper-go/releases/download/$backendVersion/$archive"
           Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\payload-backend.tar.gz"
+          $actualBackendHash = (Get-FileHash "$env:RUNNER_TEMP\payload-backend.tar.gz" -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualBackendHash -ne $expectedBackendHash) { throw "payload-dumper-go SHA-256 mismatch for $archive" }
           New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\payload-backend" | Out-Null
           tar -xzf "$env:RUNNER_TEMP\payload-backend.tar.gz" -C "$env:RUNNER_TEMP\payload-backend"
           $backend = Get-ChildItem "$env:RUNNER_TEMP\payload-backend" -Recurse -File | Where-Object { $_.Name -eq "payload-dumper-go.exe" -or $_.Name -eq "payload-dumper-go" } | Select-Object -First 1
           if (-not $backend) { throw "payload-dumper-go executable not found in Windows release archive for ${{ matrix.arch }}" }
           Copy-Item $backend.FullName "$bundle\bin\payload-dumper-go.exe"
           $platformToolsZip = "$env:RUNNER_TEMP\platform-tools.zip"
-          Invoke-WebRequest -Uri "https://dl.google.com/android/repository/platform-tools-latest-windows.zip" -OutFile $platformToolsZip
+          Invoke-WebRequest -Uri "https://dl.google.com/android/repository/platform-tools_r37.0.1-win.zip" -OutFile $platformToolsZip
+          $platformToolsHash = (Get-FileHash $platformToolsZip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($platformToolsHash -ne "84df1e5628bc7e6a9f2bf750ab98c591a99a6d622fd48f789cf278336bab5b99") { throw "Android platform-tools SHA-256 mismatch" }
           Expand-Archive -Path $platformToolsZip -DestinationPath "$env:RUNNER_TEMP\android-tools" -Force
           $toolsDir = Join-Path "$env:RUNNER_TEMP\android-tools" "platform-tools"
           if ((Test-Path "$toolsDir\adb.exe") -and (Test-Path "$toolsDir\fastboot.exe")) {
@@ -91,7 +96,7 @@ jobs:
 
       - name: Upload portable Windows ZIP for testing
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: droidlab-windows-${{ matrix.arch }}
           path: dist/DroidLab-*-windows-${{ matrix.arch }}.zip
