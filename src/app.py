@@ -1630,6 +1630,34 @@ class PayloadDumperApp(TkinterDnD.Tk):
         process = None
         output_lines = []
         try:
+            # Device lists can become stale between selection/confirmation and
+            # execution. Revalidate a targeted Fastboot command immediately
+            # before spawning it, especially for flash/erase/unlock operations.
+            executable = Path(command[0]).name.lower() if command else ""
+            if executable in ("fastboot", "fastboot.exe") and "-s" in command:
+                selector_index = command.index("-s")
+                if selector_index + 1 >= len(command):
+                    raise ValueError("Fastboot command has a malformed -s selector.")
+                target_serial = command[selector_index + 1]
+                args_after_target = command[selector_index + 2:]
+                is_discovery = bool(args_after_target and args_after_target[0].lower() in
+                                    ("devices", "help", "--help", "--version", "version", "getvar"))
+                if not is_discovery:
+                    probe = subprocess.run(
+                        [command[0], "devices", "-l"], capture_output=True, text=True,
+                        encoding="utf-8", errors="replace", timeout=8, check=False,
+                        **_windows_process_options()
+                    )
+                    connected = {
+                        line.split()[0] for line in probe.stdout.splitlines()
+                        if len(line.split()) >= 2 and line.split()[1].lower() == "fastboot"
+                    }
+                    if probe.returncode != 0 or target_serial not in connected:
+                        raise RuntimeError(
+                            "Fastboot target %r is no longer present in the fresh device scan. "
+                            "Refresh devices, verify the target, and retry. Probe output: %s"
+                            % (target_serial, (probe.stdout + "\\n" + probe.stderr).strip())
+                        )
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                        stdin=subprocess.DEVNULL, text=True, encoding="utf-8",
                                        errors="replace", bufsize=1, **_windows_process_options())
@@ -1666,10 +1694,13 @@ class PayloadDumperApp(TkinterDnD.Tk):
             output = "".join(output_lines).strip() or "Exit status: " + str(code)
             self.events.put(("console_line", (kind, "[DroidLab] Process exited with code " + str(code) + "\n")))
             self.events.put(("adb_result", (kind, code, output)))
-        except (OSError, subprocess.TimeoutExpired) as exc:
+        except (OSError, subprocess.TimeoutExpired, ValueError, RuntimeError) as exc:
             if process and process.poll() is None:
                 process.kill()
-                process.wait()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    logging.error("Timed out waiting for command process after forced termination")
             message = str(exc)
             self.events.put(("console_line", (kind, "[DroidLab] ERROR: " + message + "\n")))
             self.events.put(("adb_result", (kind, -1, message)))
