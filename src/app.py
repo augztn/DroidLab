@@ -1957,7 +1957,8 @@ class PayloadDumperApp(TkinterDnD.Tk):
         process = self.adb_log_process
         # Keep logcat separate from the app-wide event queue: a noisy device
         # must not grow memory without bound or starve operation-result events.
-        self.adb_log_queue = queue.Queue(maxsize=2000)
+        log_queue = queue.Queue(maxsize=2000)
+        self.adb_log_queue = log_queue
         self.adb_log_dropped = 0
         def reader():
             try:
@@ -1965,10 +1966,10 @@ class PayloadDumperApp(TkinterDnD.Tk):
                     for line in process.stdout:
                         item = line.rstrip("\r\n")
                         try:
-                            self.adb_log_queue.put_nowait(item)
+                            log_queue.put_nowait(item)
                         except queue.Full:
                             try:
-                                self.adb_log_queue.get_nowait()
+                                log_queue.get_nowait()
                             except queue.Empty:
                                 pass
                             self.adb_log_dropped += 1
