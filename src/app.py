@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cross-platform DroidLab desktop UI for Android firmware workflows."""
 from __future__ import annotations
-import os, queue, threading, tkinter as tk, shutil, re, shlex, sys
+import os, queue, threading, tkinter as tk, shutil, re, shlex, sys, json
 import subprocess, webbrowser, logging, platform
 from logging.handlers import RotatingFileHandler
 from tkinter import filedialog, messagebox, ttk
@@ -23,6 +23,81 @@ def _windows_process_options():
 
 
 APP_NAME = "DroidLab"  # Canonical product name.
+
+THEME_TOKENS = {
+    "cyberpunk_glass": {
+        "label": "Cyberpunk Glass",
+        "bg": "#0B0F17",
+        "panel": "#131A26",
+        "panel_alt": "#1C2638",
+        "border": "#1F2C40",
+        "text": "#F8FAFC",
+        "muted": "#94A3B8",
+        "input": "#0D1420",
+        "accent": "#00D2FF",
+        "accent2": "#8B5CF6",
+        "button": "#1C2638",
+        "console": "#080C12",
+        "success": "#10B981",
+        "warning": "#F59E0B",
+        "danger": "#F87171"
+    },
+    "standard_dark": {
+        "label": "Standard Dark",
+        "bg": "#111318",
+        "panel": "#1C202A",
+        "panel_alt": "#252B38",
+        "border": "#2C3242",
+        "text": "#E2E8F0",
+        "muted": "#94A3B8",
+        "input": "#141821",
+        "accent": "#3B82F6",
+        "accent2": "#6366F1",
+        "button": "#252B38",
+        "console": "#0B0D12",
+        "success": "#10B981",
+        "warning": "#F59E0B",
+        "danger": "#F87171"
+    },
+    "standard_light": {
+        "label": "Standard Light",
+        "bg": "#F1F5F9",
+        "panel": "#FFFFFF",
+        "panel_alt": "#E2E8F0",
+        "border": "#CBD5E1",
+        "text": "#0F172A",
+        "muted": "#64748B",
+        "input": "#FFFFFF",
+        "accent": "#2563EB",
+        "accent2": "#7C3AED",
+        "button": "#E2E8F0",
+        "console": "#F8FAFC",
+        "success": "#047857",
+        "warning": "#B45309",
+        "danger": "#B91C1C"
+    },
+    "oled_black": {
+        "label": "OLED Black",
+        "bg": "#000000",
+        "panel": "#0F0F0F",
+        "panel_alt": "#171717",
+        "border": "#222222",
+        "text": "#F8FAFC",
+        "muted": "#A3A3A3",
+        "input": "#050505",
+        "accent": "#38BDF8",
+        "accent2": "#818CF8",
+        "button": "#171717",
+        "console": "#000000",
+        "success": "#34D399",
+        "warning": "#FBBF24",
+        "danger": "#F87171"
+    }
+}
+
+
+def _settings_path():
+    return Path.home() / "DroidLab" / "config.json"
 
 def _log_directory():
     """Keep logs in a clearly visible DroidLab folder inside the user's home directory."""
@@ -80,9 +155,11 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.title(APP_NAME)
         # Use a practical Windows-first size; ttk layouts and system fonts scale
         # more predictably than the oversized Linux-oriented defaults.
-        self.geometry("1240x820")
-        self.minsize(960, 680)
-        self.configure(bg="#111827")
+        self.geometry("1180x760")
+        self.minsize(900, 600)
+        self.theme_name = self._load_theme_name()
+        self.theme_tokens = THEME_TOKENS[self.theme_name]
+        self.configure(bg=self.theme_tokens["bg"])
         self._ui_font = "Segoe UI" if os.name == "nt" else "Sans"
         self._mono_font = "Consolas" if os.name == "nt" else "Monospace"
         self.events=queue.Queue(); self.worker=None; self.cancel_event=threading.Event()
@@ -99,6 +176,75 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.report_callback_exception = self._report_callback_exception
         logging.info("UI initialized")
         self.after(100,self._poll_events)
+    def _load_theme_name(self):
+        try:
+            name = json.loads(_settings_path().read_text(encoding="utf-8")).get("theme")
+            return name if name in THEME_TOKENS else "cyberpunk_glass"
+        except (OSError, ValueError, AttributeError):
+            return "cyberpunk_glass"
+
+    def _apply_theme(self, name):
+        if name not in THEME_TOKENS:
+            return
+        self.theme_name = name
+        self.theme_tokens = t = THEME_TOKENS[name]
+        self.configure(bg=t["bg"])
+        style = ttk.Style(self)
+        style.configure("TFrame", background=t["bg"])
+        style.configure("Panel.TFrame", background=t["panel"], bordercolor=t["border"])
+        style.configure("TLabel", background=t["bg"], foreground=t["text"])
+        style.configure("Title.TLabel", background=t["bg"], foreground=t["text"])
+        style.configure("Muted.TLabel", background=t["bg"], foreground=t["muted"])
+        style.configure("TButton", background=t["button"], foreground=t["text"], padding=(9, 5), relief="flat")
+        style.map("TButton", background=[("active", t["border"]), ("pressed", t["accent2"])],
+                  foreground=[("disabled", t["muted"]), ("active", t["text"])])
+        style.configure("Primary.TButton", background=t["accent2"], foreground="#ffffff", padding=(10, 5))
+        style.map("Primary.TButton", background=[("active", t["accent"])])
+        style.configure("TEntry", fieldbackground=t["input"], foreground=t["text"], insertcolor=t["text"])
+        style.configure("TCombobox", fieldbackground=t["input"], background=t["button"], foreground=t["text"], arrowcolor=t["accent"])
+        style.configure("Treeview", background=t["input"], fieldbackground=t["input"], foreground=t["text"])
+        style.configure("Treeview.Heading", background=t["panel"], foreground=t["text"])
+        for attr in ("log", "fastboot_console", "adb_console"):
+            widget = getattr(self, attr, None)
+            if widget:
+                try: widget.configure(bg=t["console"], fg=t["text"], insertbackground=t["text"])
+                except tk.TclError: pass
+        if hasattr(self, "header_telemetry"):
+            try: self.header_telemetry.configure(bg=t["panel"], highlightbackground=t["border"])
+            except tk.TclError: pass
+        if hasattr(self, "theme_button"):
+            self.theme_button.configure(bg=t["panel"], fg=t["muted"], activebackground=t["button"])
+        try:
+            path = _settings_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            try: config = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+            except (OSError, ValueError): config = {}
+            config["theme"] = name
+            path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+        except OSError as exc:
+            logging.warning("Unable to save theme preference: %s", exc)
+
+    def _open_theme_picker(self):
+        t = self.theme_tokens
+        dialog = tk.Toplevel(self)
+        dialog.title("DroidLab appearance")
+        dialog.transient(self)
+        dialog.configure(bg=t["bg"])
+        dialog.resizable(False, False)
+        panel = tk.Frame(dialog, bg=t["panel"], padx=18, pady=16, highlightthickness=1, highlightbackground=t["border"])
+        panel.pack(fill="both", expand=True, padx=12, pady=12)
+        tk.Label(panel, text="APPEARANCE", bg=t["panel"], fg=t["text"], font=(self._ui_font, 13, "bold")).pack(anchor="w")
+        tk.Label(panel, text="Changes apply immediately and persist across launches.", bg=t["panel"], fg=t["muted"]).pack(anchor="w", pady=(3, 12))
+        for name, desc in (("cyberpunk_glass", "Cyberpunk Glass — cyan / purple"), ("standard_dark", "Standard Dark — neutral slate"), ("standard_light", "Standard Light — bright surfaces"), ("oled_black", "OLED Black — pitch black")):
+            tk.Button(panel, text=("✓  " if name == self.theme_name else "    ") + name + " — " + desc,
+                      command=lambda n=name, d=dialog: (self._apply_theme(n), d.destroy()),
+                      anchor="w", bg=t["button"], fg=t["text"], activebackground=t["accent2"],
+                      activeforeground="#ffffff", relief="flat", bd=0, padx=10, pady=9).pack(fill="x", pady=3)
+        ttk.Button(panel, text="Close", command=dialog.destroy).pack(anchor="e", pady=(10, 0))
+        dialog.update_idletasks()
+        dialog.geometry(f"+{self.winfo_rootx()+80}+{self.winfo_rooty()+80}")
+        dialog.grab_set()
+
     def _report_callback_exception(self, exc_type, exc_value, exc_traceback):
         logging.error("Unhandled Tkinter callback exception", exc_info=(exc_type, exc_value, exc_traceback))
         try:
@@ -316,57 +462,148 @@ class PayloadDumperApp(TkinterDnD.Tk):
         try:s.theme_use("clam")
         except tk.TclError:pass
         font = self._ui_font
-        s.configure("TFrame", background="#111827")
-        s.configure("Panel.TFrame", background="#1f2937")
-        s.configure("TLabel", background="#111827", foreground="#e5e7eb", font=(font, 10 if os.name == "nt" else 13))
-        s.configure("Title.TLabel", font=(font, 20, "bold"), foreground="#f9fafb")
+        # Shared palette and control states adapted from the supplied React design.
+        # Keep all styling in ttk so the native desktop build stays self-contained.
+        s.configure("TFrame", background="#0F1117")
+        s.configure("Panel.TFrame", background="#1f2937", relief="solid",
+                    borderwidth=1, bordercolor="#374151")
+        s.configure("TLabel", background="#0F1117", foreground="#F3F4F6",
+                    font=(font, 10 if os.name == "nt" else 13))
+        s.configure("Title.TLabel", font=(font, 20, "bold"), foreground="#f8fafc")
         s.configure("Muted.TLabel", foreground="#cbd5e1")
-        s.configure("TButton", padding=(9, 6), font=(font, 10 if os.name == "nt" else 12))
-        s.configure("TCheckbutton", background="#1f2937", foreground="#f9fafb", font=(font, 11 if os.name == "nt" else 13))
-        s.configure("Large.TCheckbutton", background="#1f2937", foreground="#f9fafb", font=(font, 12 if os.name == "nt" else 15), padding=(2, 4))
-        s.configure("Large.TButton", padding=(10, 9), font=(font, 11 if os.name == "nt" else 14, "bold"))
-        s.configure("TEntry", padding=5, font=(font, 10 if os.name == "nt" else 12))
-        s.configure("TCombobox", padding=5, font=(font, 10 if os.name == "nt" else 12))
-        s.configure("Treeview", background="#0b1220", fieldbackground="#0b1220", foreground="#f1f5f9", rowheight=30 if os.name == "nt" else 38, font=(font, 10 if os.name == "nt" else 12))
-        s.configure("Treeview.Heading", background="#374151", foreground="#ffffff", font=(font, 10 if os.name == "nt" else 12, "bold"), padding=(7, 6))
-        s.map("Treeview", background=[("selected", "#1d4ed8")], foreground=[("selected", "#ffffff")])
-        s.configure("TNotebook", background="#111827", borderwidth=0, tabmargins=(2, 4, 2, 0))
+        s.configure("TButton", background="#374151", foreground="#f8fafc",
+                    bordercolor="#475569", lightcolor="#475569", darkcolor="#263449",
+                    relief="flat", padding=(8, 4),
+                    font=(font, 10 if os.name == "nt" else 12))
+        s.map("TButton",
+              background=[("disabled", "#1f2937"), ("pressed", "#1e40af"),
+                          ("active", "#4b5563")],
+              foreground=[("disabled", "#64748b"), ("active", "#ffffff")],
+              bordercolor=[("focus", "#3b82f6")])
+        s.configure("Primary.TButton", background="#1d4ed8", foreground="#ffffff",
+                    bordercolor="#2563eb", lightcolor="#2563eb", darkcolor="#1e40af",
+                    relief="flat", padding=(9, 5),
+                    font=(font, 10 if os.name == "nt" else 12, "bold"))
+        s.map("Primary.TButton",
+              background=[("disabled", "#334155"), ("pressed", "#1e40af"),
+                          ("active", "#2563eb")],
+              foreground=[("disabled", "#94a3b8"), ("active", "#ffffff")])
+        s.configure("Danger.TButton", background="#991b1b", foreground="#ffffff",
+                    bordercolor="#b91c1c", lightcolor="#b91c1c", darkcolor="#7f1d1d",
+                    relief="flat", padding=(8, 4),
+                    font=(font, 10 if os.name == "nt" else 12, "bold"))
+        s.map("Danger.TButton",
+              background=[("disabled", "#1f2937"), ("pressed", "#7f1d1d"),
+                          ("active", "#b91c1c")])
+        s.configure("TCheckbutton", background="#1f2937", foreground="#f8fafc",
+                    font=(font, 11 if os.name == "nt" else 13))
+        s.map("TCheckbutton", background=[("active", "#1f2937")],
+              foreground=[("active", "#ffffff")])
+        s.configure("Large.TCheckbutton", background="#1f2937", foreground="#f8fafc",
+                    font=(font, 12 if os.name == "nt" else 15), padding=(2, 4))
+        s.configure("Large.TButton", background="#1d4ed8", foreground="#ffffff",
+                    bordercolor="#2563eb", lightcolor="#2563eb", darkcolor="#1e40af",
+                    relief="flat", padding=(9, 6),
+                    font=(font, 11 if os.name == "nt" else 14, "bold"))
+        s.map("Large.TButton",
+              background=[("disabled", "#334155"), ("pressed", "#1e40af"),
+                          ("active", "#2563eb")],
+              foreground=[("disabled", "#94a3b8"), ("active", "#ffffff")])
+        s.configure("TEntry", fieldbackground="#0b1220", foreground="#f1f5f9",
+                    insertcolor="#ffffff", bordercolor="#374151", lightcolor="#374151",
+                    darkcolor="#0b1220", padding=6,
+                    font=(font, 10 if os.name == "nt" else 12))
+        s.map("TEntry", bordercolor=[("focus", "#3b82f6")])
+        s.configure("TCombobox", fieldbackground="#0b1220", background="#1f2937",
+                    foreground="#f1f5f9", arrowcolor="#cbd5e1", bordercolor="#374151",
+                    lightcolor="#374151", darkcolor="#0b1220", padding=6,
+                    font=(font, 10 if os.name == "nt" else 12))
+        s.map("TCombobox",
+              fieldbackground=[("readonly", "#0b1220"), ("focus", "#0b1220")],
+              foreground=[("readonly", "#f1f5f9")],
+              bordercolor=[("focus", "#3b82f6")])
+        s.configure("Treeview", background="#0b1220", fieldbackground="#0b1220",
+                    foreground="#f1f5f9", bordercolor="#374151",
+                    rowheight=32 if os.name == "nt" else 38,
+                    font=(font, 10 if os.name == "nt" else 12))
+        s.configure("Treeview.Heading", background="#263449", foreground="#f8fafc",
+                    font=(font, 10 if os.name == "nt" else 12, "bold"), padding=(9, 8),
+                    relief="flat")
+        s.map("Treeview", background=[("selected", "#1d4ed8")],
+              foreground=[("selected", "#ffffff")])
+        s.configure("TNotebook", background="#111827", borderwidth=0,
+                    tabmargins=(3, 5, 3, 0))
         s.configure("TNotebook.Tab", background="#1f2937", foreground="#cbd5e1",
-                    padding=(16, 9), font=(font, 10 if os.name == "nt" else 12, "bold"))
+                    padding=(18, 10), borderwidth=0,
+                    font=(font, 10 if os.name == "nt" else 12, "bold"))
         s.map("TNotebook.Tab",
-              background=[("selected", "#2563eb"), ("active", "#334155")],
+              background=[("selected", "#1d4ed8"), ("active", "#334155")],
               foreground=[("selected", "#ffffff"), ("active", "#ffffff")])
 
         # App-wide header keeps identity and current operation status visible on every tab.
-        app_header = tk.Frame(self, bg="#172554", padx=16, pady=11,
-                              highlightthickness=1, highlightbackground="#263b67")
-        app_header.pack(fill="x", padx=10, pady=(10, 0))
+        app_header = tk.Frame(self, bg="#161922", padx=12, pady=7,
+                              highlightthickness=1, highlightbackground="#2A3040")
+        app_header.pack(fill="x", padx=6, pady=(6, 0))
         brand_mark = tk.Label(app_header, text="DL", bg="#2563eb", fg="#ffffff",
                               font=(font, 13, "bold"), width=4, pady=7)
         brand_mark.pack(side="left", padx=(0, 12))
-        brand_text = tk.Frame(app_header, bg="#172554")
+        brand_text = tk.Frame(app_header, bg="#161922")
         brand_text.pack(side="left", fill="x", expand=True)
-        tk.Label(brand_text, text="DroidLab", bg="#172554", fg="#f8fafc",
-                 font=(font, 17, "bold")).pack(anchor="w")
-        tk.Label(brand_text, text="Android firmware toolkit · Extract · Diagnose · Maintain",
-                 bg="#172554", fg="#bfdbfe", font=(font, 9 if os.name == "nt" else 11)).pack(anchor="w", pady=(2, 0))
-        status_card = tk.Frame(app_header, bg="#1e293b", padx=12, pady=7)
-        status_card.pack(side="right", padx=(12, 0))
-        tk.Label(status_card, text="STATUS", bg="#1e293b", fg="#93c5fd",
-                 font=(font, 8 if os.name == "nt" else 9, "bold")).pack(anchor="w")
-        self.header_status_label = tk.Label(status_card, textvariable=self.status,
-                 bg="#1e293b", fg="#86efac", font=(font, 10 if os.name == "nt" else 11, "bold"),
-                 wraplength=190, justify="left")
-        self.header_status_label.pack(anchor="w", pady=(2, 0))
+        tk.Label(brand_text, text="DroidLab", bg="#161922", fg="#F3F4F6",
+                 font=(font, 15, "bold")).pack(side="left", anchor="center")
+        tk.Label(brand_text, text="Android firmware toolkit  ·  Extract · Diagnose · Maintain",
+                 bg="#161922", fg="#94A3B8", font=(font, 9)).pack(side="left", anchor="center", padx=(12, 0))
+        # Compact app-wide device telemetry in the navigation header.
+        telemetry = tk.Frame(app_header, bg="#161B22", padx=10, pady=2,
+                             highlightthickness=1, highlightbackground="#30363D")
+        telemetry.pack(side="right", padx=(8, 0), anchor="center")
+        self.header_device_vars = {name: tk.StringVar(value="—") for name in ("mode", "serial", "codename", "bootloader")}
+        self.header_device_vars["mode"].set("NO DEVICE")
+        self.header_mode_label = tk.Label(telemetry, textvariable=self.header_device_vars["mode"],
+            bg="#161B22", fg="#F97316", font=(self._ui_font, 8, "bold"))
+        self.header_mode_label.pack(side="left", padx=(0, 9))
+        for label, key in (("DEVICE", "serial"), ("CODENAME", "codename")):
+            tk.Label(telemetry, text=label, bg="#161B22", fg="#8B949E",
+                     font=(self._ui_font, 7, "bold")).pack(side="left", padx=(0, 3))
+            tk.Label(telemetry, textvariable=self.header_device_vars[key], bg="#161B22",
+                     fg="#E6EDF3", font=(self._mono_font, 8)).pack(side="left", padx=(0, 8))
+        tk.Label(telemetry, text="SLOT", bg="#161B22", fg="#8B949E",
+                 font=(self._ui_font, 7, "bold")).pack(side="left", padx=(0, 4))
+        self.header_slot_buttons = {}
+        for slot in ("a", "b"):
+            button = tk.Button(telemetry, text=slot.upper(), command=lambda value=slot: self._set_active_slot(value),
+                bg="#30363D", fg="#E6EDF3", activebackground="#2563EB", activeforeground="#FFFFFF",
+                relief="flat", bd=0, padx=6, pady=1, font=(self._ui_font, 8, "bold"),
+                cursor="hand2", state="disabled")
+            button.pack(side="left", padx=(0, 2))
+            self.header_slot_buttons[slot] = button
+        self.header_bootloader_label = tk.Label(telemetry, textvariable=self.header_device_vars["bootloader"],
+            bg="#161B22", fg="#F59E0B", font=(self._ui_font, 8, "bold"))
+        self.header_bootloader_label.pack(side="left", padx=(5, 0))
+        self.header_telemetry = telemetry
 
-        notebook=ttk.Notebook(self); notebook.pack(fill="both",expand=True,padx=10,pady=10)
-        root=ttk.Frame(notebook,padding=16); notebook.add(root,text="Payload Extractor")
+        status_card = tk.Frame(app_header, bg="#1E222D", padx=10, pady=5,
+                              highlightthickness=1, highlightbackground="#2A3040")
+        status_card.pack(side="right", padx=(12, 0), anchor="center")
+        tk.Label(status_card, text="●", bg="#1E222D", fg="#10B981",
+                 font=(font, 10, "bold")).pack(side="left", padx=(0, 6))
+        self.header_status_label = tk.Label(status_card, textvariable=self.status,
+                 bg="#1E222D", fg="#F3F4F6", font=(font, 9, "bold"),
+                 wraplength=0, justify="left")
+        self.header_status_label.pack(side="left")
+        self.theme_button = tk.Button(app_header, text="⚙", command=self._open_theme_picker,
+            bg="#161922", fg="#94A3B8", activebackground="#263448", activeforeground="#00d2ff",
+            relief="flat", bd=0, padx=9, pady=5, cursor="hand2", font=(font, 12, "bold"))
+        self.theme_button.pack(side="right", padx=(8, 0))
+
+        notebook=ttk.Notebook(self); notebook.pack(fill="both",expand=True,padx=6,pady=6)
+        root=ttk.Frame(notebook,padding=8); notebook.add(root,text="Payload Extractor")
         device_tab=ttk.Frame(notebook,padding=0); notebook.add(device_tab,text="Device Control & Flashing")
         self.device_mode=tk.StringVar(value="adb")
         self.device_workspace=ttk.Frame(device_tab)
         self.device_workspace.pack(fill="both",expand=True)
-        self.flash_workspace=ttk.Frame(self.device_workspace,padding=16)
-        self.adb_workspace=ttk.Frame(self.device_workspace,padding=16)
+        self.flash_workspace=ttk.Frame(self.device_workspace,padding=8)
+        self.adb_workspace=ttk.Frame(self.device_workspace,padding=6)
         self.flash_workspace.grid(row=0,column=0,sticky="nsew")
         self.adb_workspace.grid(row=0,column=0,sticky="nsew")
         self.device_workspace.columnconfigure(0,weight=1); self.device_workspace.rowconfigure(0,weight=1)
@@ -376,13 +613,13 @@ class PayloadDumperApp(TkinterDnD.Tk):
         ttk.Label(h,text="Payload inspection",style="Title.TLabel").pack(anchor="w")
         ttk.Label(h,text="Inspect an OTA package, choose partitions, and extract verified output files.",
                   style="Muted.TLabel", wraplength=900).pack(anchor="w",pady=(3,0))
-        src=ttk.Frame(root,style="Panel.TFrame",padding=10); src.pack(fill="x",pady=(0,7)); ttk.Label(src,text="INPUT FILE PATH — TYPE OR PASTE THE FULL PATH",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(src,style="Panel.TFrame"); row.pack(fill="x",pady=(6,0)); self.source_entry=ttk.Entry(row,textvariable=self.source); self.source_entry.pack(side="left",fill="x",expand=True,ipady=4); self.source_entry.bind("<Return>",lambda _event:self._apply_manual_source_path()); ttk.Button(row,text="Browse…",command=self._browse_source).pack(side="left",padx=(7,0)); actions=ttk.Frame(src,style="Panel.TFrame"); actions.pack(fill="x",pady=(7,0)); ttk.Button(actions,text="Use typed path",command=self._apply_manual_source_path).pack(side="left"); ttk.Button(actions,text="Inspect partitions",command=self._inspect).pack(side="left",padx=(7,0))
-        out=ttk.Frame(root,style="Panel.TFrame",padding=10); out.pack(fill="x",pady=(0,7)); ttk.Label(out,text="OUTPUT DIRECTORY",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(out,style="Panel.TFrame"); row.pack(fill="x",pady=(5,0)); ttk.Entry(row,textvariable=self.output).pack(side="left",fill="x",expand=True,ipady=4); ttk.Button(row,text="Choose…",command=self._browse_output).pack(side="left",padx=(7,0)); ttk.Button(row,text="Open folder",command=self._open_output_directory).pack(side="left",padx=(7,0))
+        src=ttk.Frame(root,style="Panel.TFrame",padding=6); src.pack(fill="x",pady=(0,7)); ttk.Label(src,text="INPUT FILE PATH — TYPE OR PASTE THE FULL PATH",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(src,style="Panel.TFrame"); row.pack(fill="x",pady=(6,0)); self.source_entry=ttk.Entry(row,textvariable=self.source); self.source_entry.pack(side="left",fill="x",expand=True,ipady=4); self.source_entry.bind("<Return>",lambda _event:self._apply_manual_source_path()); ttk.Button(row,text="Browse…",command=self._browse_source).pack(side="left",padx=(7,0)); actions=ttk.Frame(src,style="Panel.TFrame"); actions.pack(fill="x",pady=(7,0)); ttk.Button(actions,text="Use typed path",command=self._apply_manual_source_path).pack(side="left"); ttk.Button(actions,text="Inspect partitions",command=self._inspect).pack(side="left",padx=(7,0))
+        out=ttk.Frame(root,style="Panel.TFrame",padding=6); out.pack(fill="x",pady=(0,7)); ttk.Label(out,text="OUTPUT DIRECTORY",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(out,style="Panel.TFrame"); row.pack(fill="x",pady=(5,0)); ttk.Entry(row,textvariable=self.output).pack(side="left",fill="x",expand=True,ipady=4); ttk.Button(row,text="Choose…",command=self._browse_output).pack(side="left",padx=(7,0)); ttk.Button(row,text="Open folder",command=self._open_output_directory).pack(side="left",padx=(7,0))
         # Compact mounted-drive controls share the output panel to save vertical space for partitions.
         drive_row=ttk.Frame(out,style="Panel.TFrame"); drive_row.pack(fill="x",pady=(5,0)); ttk.Label(drive_row,text="Mounted drive",background="#1f2937",foreground="#cbd5e1").pack(side="left",padx=(0,8)); self.storage_var=tk.StringVar(); self.storage_combo=ttk.Combobox(drive_row,textvariable=self.storage_var,state="readonly"); self.storage_combo.pack(side="left",fill="x",expand=True); ttk.Button(drive_row,text="Refresh",command=self._refresh_storage_locations).pack(side="left",padx=(7,0)); ttk.Button(drive_row,text="Browse drive",command=self._browse_selected_storage).pack(side="left",padx=(7,0)); ttk.Button(drive_row,text="Use for output",command=self._use_selected_storage).pack(side="left",padx=(7,0));
-        middle=ttk.Frame(root); middle.pack(fill="both",expand=True,pady=(0,10)); panel=ttk.Frame(middle,style="Panel.TFrame",padding=10); panel.pack(side="left",fill="both",expand=True,padx=(0,10)); ttk.Label(panel,text="PARTITIONS",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); ttk.Label(panel,text="Filter by partition name; no selection means extract all.",background="#1f2937",foreground="#cbd5e1").pack(anchor="w",pady=(2,5)); filter_row=ttk.Frame(panel,style="Panel.TFrame"); filter_row.pack(fill="x",pady=(0,5)); self.partition_filter=tk.StringVar(); self.partition_filter.trace_add("write",lambda *_:self._refresh_partition_tree()); self.partition_filter_entry=ttk.Entry(filter_row,textvariable=self.partition_filter); self.partition_filter_entry.pack(side="left",fill="x",expand=True); ttk.Button(filter_row,text="Clear",command=lambda:self.partition_filter.set("")).pack(side="left",padx=(6,0)); actions=ttk.Frame(panel,style="Panel.TFrame"); actions.pack(fill="x",pady=5); ttk.Button(actions,text="Select all",command=lambda:self._select_all(True)).pack(side="left"); ttk.Button(actions,text="Select none",command=lambda:self._select_all(False)).pack(side="left",padx=5); self.partition_summary=tk.StringVar(value="0 partitions · 0 selected · 0 B selected"); ttk.Label(actions,textvariable=self.partition_summary,background="#1f2937",foreground="#cbd5e1").pack(side="right",padx=(8,0))
+        middle=ttk.Frame(root); middle.pack(fill="both",expand=True,pady=(0,10)); panel=ttk.Frame(middle,style="Panel.TFrame",padding=6); panel.pack(side="left",fill="both",expand=True,padx=(0,10)); ttk.Label(panel,text="PARTITIONS",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); ttk.Label(panel,text="Filter by partition name; no selection means extract all.",background="#1f2937",foreground="#cbd5e1").pack(anchor="w",pady=(2,5)); filter_row=ttk.Frame(panel,style="Panel.TFrame"); filter_row.pack(fill="x",pady=(0,5)); self.partition_filter=tk.StringVar(); self.partition_filter.trace_add("write",lambda *_:self._refresh_partition_tree()); self.partition_filter_entry=ttk.Entry(filter_row,textvariable=self.partition_filter); self.partition_filter_entry.pack(side="left",fill="x",expand=True); ttk.Button(filter_row,text="Clear",command=lambda:self.partition_filter.set("")).pack(side="left",padx=(6,0)); actions=ttk.Frame(panel,style="Panel.TFrame"); actions.pack(fill="x",pady=5); ttk.Button(actions,text="Select all",command=lambda:self._select_all(True)).pack(side="left"); ttk.Button(actions,text="Select none",command=lambda:self._select_all(False)).pack(side="left",padx=5); self.partition_summary=tk.StringVar(value="0 partitions · 0 selected · 0 B selected"); ttk.Label(actions,textvariable=self.partition_summary,background="#1f2937",foreground="#cbd5e1").pack(side="right",padx=(8,0))
         self.tree=ttk.Treeview(panel,columns=("size",),show="tree headings",selectmode="none"); self.tree.heading("#0",text="Partition"); self.tree.heading("size",text="Size"); self.tree.column("#0",width=420,minwidth=260,stretch=True); self.tree.column("size",width=150,minwidth=130,anchor="e",stretch=False); self.tree.pack(fill="both",expand=True); self.tree.bind("<Button-1>",self._toggle)
-        side=ttk.Frame(middle,style="Panel.TFrame",padding=14,width=300); side.pack(side="right",fill="y"); side.pack_propagate(False); ttk.Label(side,text="OPTIONS",background="#1f2937",foreground="#93c5fd",font=("Sans",16,"bold")).pack(anchor="w",pady=(0,8)); ttk.Separator(side).pack(fill="x",pady=(0,10)); ttk.Checkbutton(side,text="Generate SHA-256 fingerprints",variable=self.fingerprint,style="Large.TCheckbutton").pack(anchor="w",pady=(10,8)); ttk.Label(side,text="Creates a SHA-256 checksum for each extracted partition. This is separate from the backend’s OTA verification.",background="#1f2937",foreground="#cbd5e1",justify="left",wraplength=260,font=(self._ui_font,10 if os.name == "nt" else 12)).pack(anchor="w",pady=(4,16)); self.start_button=ttk.Button(side,text="Extract payload",command=self._start,style="Large.TButton"); self.start_button.pack(fill="x",pady=(8,8),ipady=5); self.cancel_button=ttk.Button(side,text="Cancel",command=self._cancel,state="disabled",style="Large.TButton"); self.cancel_button.pack(fill="x",ipady=5)
+        side=ttk.Frame(middle,style="Panel.TFrame",padding=8,width=260); side.pack(side="right",fill="y"); side.pack_propagate(False); ttk.Label(side,text="OPTIONS",background="#1f2937",foreground="#93c5fd",font=("Sans",16,"bold")).pack(anchor="w",pady=(0,8)); ttk.Separator(side).pack(fill="x",pady=(0,10)); ttk.Checkbutton(side,text="Generate SHA-256 fingerprints",variable=self.fingerprint,style="Large.TCheckbutton").pack(anchor="w",pady=(10,8)); ttk.Label(side,text="Creates a SHA-256 checksum for each extracted partition. This is separate from the backend’s OTA verification.",background="#1f2937",foreground="#cbd5e1",justify="left",wraplength=260,font=(self._ui_font,10 if os.name == "nt" else 12)).pack(anchor="w",pady=(4,16)); self.start_button=ttk.Button(side,text="Extract payload",command=self._start,style="Large.TButton"); self.start_button.pack(fill="x",pady=(8,8),ipady=5); self.cancel_button=ttk.Button(side,text="Cancel",command=self._cancel,state="disabled",style="Danger.TButton"); self.cancel_button.pack(fill="x",ipady=5)
         logbox=ttk.Frame(root,style="Panel.TFrame",padding=10); logbox.pack(fill="x",expand=False)
         ttk.Label(logbox,text="ACTIVITY LOG",background="#1f2937",foreground="#93c5fd",
                   font=(self._ui_font,10 if os.name == "nt" else 12,"bold")).pack(anchor="w")
@@ -396,15 +633,24 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.log.pack(side="left",fill="both",expand=True)
         self.log.configure(state="disabled")
         self.progress=ttk.Progressbar(logbox,mode="indeterminate"); self.progress.pack(fill="x",pady=(2,0))
+        self._apply_theme(self.theme_name)
         self._refresh_storage_locations(); self._enable_drop(self); self._enable_drop(src); self._enable_drop(self.source_entry); self._enable_drop(root); self._append("Drag payload.bin or an OTA .zip onto the window, or type/paste its full path and choose Use typed path. Inspect to select individual partitions."); self._append("Backend: payload-dumper-go (Apache-2.0). Some delta OTA operations are unsupported.")
-    def _show_device_workspace(self, mode):
-        """Show only the controls appropriate for the selected device mode."""
+    def _show_device_workspace(self, mode, manual=False):
+        """Show selected workspace and synchronize the inline mode toggle."""
         mode = "fastboot" if mode == "fastboot" else "adb"
         self.device_mode.set(mode)
+        self._manual_mode_override = bool(manual)
         if mode == "fastboot":
             self.flash_workspace.tkraise()
         else:
             self.adb_workspace.tkraise()
+        for attr, selected in (("fastboot_header_mode_button", mode == "fastboot"),
+                               ("adb_header_mode_button", mode == "adb"),
+                               ("fastboot_workspace_mode_button", mode == "fastboot"),
+                               ("adb_workspace_mode_button", mode == "adb")):
+            button = getattr(self, attr, None)
+            if button:
+                button.configure(style="Primary.TButton" if selected else "TButton")
 
     def _on_shared_device_selected(self):
         target = getattr(self, "_adb_targets", {}).get(self.adb_device.get())
@@ -431,48 +677,42 @@ class PayloadDumperApp(TkinterDnD.Tk):
 
     def _build_flash_tab(self, tab):
         """Build the Fastboot workspace with device-first selection and a live console."""
-        tab.columnconfigure(0, weight=3, uniform="fastboot_workspace")
-        tab.columnconfigure(1, weight=2, uniform="fastboot_workspace")
+        tab.columnconfigure(0, weight=13, uniform="fastboot_workspace")
+        tab.columnconfigure(1, weight=7, uniform="fastboot_workspace")
+        tab.rowconfigure(2, weight=0, minsize=0)
         tab.rowconfigure(3, weight=1)
 
-        ttk.Label(tab, text="Fastboot & Flashing", font=("Sans", 22, "bold")).grid(
-            row=0, column=0, columnspan=2, sticky="w", pady=(0, 6))
-        ttk.Label(tab, text="Select the connected device first, then choose an image or maintenance action.",
-                  style="Muted.TLabel").grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        modebar = ttk.Frame(tab)
+        modebar.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 6))
+        ttk.Label(modebar, text="Device mode", font=(self._ui_font, 16, "bold")).pack(side="left", padx=(0, 12))
+        self.fastboot_header_mode_button = ttk.Button(modebar, text="Fastboot & Flashing",
+            command=lambda: self._show_device_workspace("fastboot", manual=True), style="Primary.TButton")
+        self.fastboot_header_mode_button.pack(side="left", padx=(0, 5))
+        self.adb_header_mode_button = ttk.Button(modebar, text="ADB & Sideload",
+            command=lambda: self._show_device_workspace("adb", manual=True))
+        self.adb_header_mode_button.pack(side="left")
+        ttk.Label(tab, text="Choose a device, then select a maintenance or flashing action.",
+                  style="Muted.TLabel").grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 5))
 
         # Device selector comes first so every later operation has a clear target.
-        device = ttk.Frame(tab, style="Panel.TFrame", padding=10)
-        device.grid(row=2, column=0, sticky="nsew", padx=(0, 10), pady=(0, 10))
-        device.columnconfigure(0, weight=1)
-        info = ttk.Frame(tab, style="Panel.TFrame", padding=10)
-        info.grid(row=2, column=1, sticky="nsew", pady=(0, 10))
-        info.columnconfigure(0, weight=1)
-        ttk.Label(info, text="DEVICE INFO", background="#1f2937", foreground="#93c5fd",
-                  font=("Sans", 11, "bold")).grid(row=0, column=0, sticky="w")
-        self.device_info_mode = tk.StringVar(value="NO DEVICE")
-        self.device_info_mode_label = tk.Label(info, textvariable=self.device_info_mode,
-            bg="#4b5563", fg="#fef3c7", padx=8, pady=3, font=("Sans", 9, "bold"))
-        self.device_info_mode_label.grid(row=0, column=1, sticky="e", padx=(4, 0))
+        device = ttk.Frame(tab, style="Panel.TFrame", padding=5)
+        device.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(0, 5))
+        device.columnconfigure(0, weight=0)
+        # Device details live beside the console, not beside the compact device picker.
         self.device_info_vars = {}
-        for row, (key, initial) in enumerate((("Brand / Manufacturer", "—"), ("Device name / Model", "—"),
-                ("Model code", "—"), ("Codename", "—"), ("Active slot", "—"),
-                ("Bootloader", "—"), ("Battery", "—")), start=1):
-            ttk.Label(info, text=key + ":", background="#1f2937", foreground="#cbd5e1").grid(row=row, column=0, sticky="w", pady=1)
-            var = tk.StringVar(value=initial)
-            self.device_info_vars[key] = var
-            ttk.Label(info, textvariable=var, background="#1f2937", foreground="#f8fafc",
-                      wraplength=230).grid(row=row, column=1, sticky="w", padx=(8, 0), pady=1)
+        self.device_info_mode = tk.StringVar(value="NO DEVICE")
         ttk.Label(device, text="FASTBOOT DEVICE", background="#1f2937", foreground="#93c5fd",
                   font=("Sans", 10, "bold")).grid(row=0, column=0, sticky="w")
         self.fastboot_device = tk.StringVar()
         self.device_combo = ttk.Combobox(device, textvariable=self.fastboot_device, state="readonly")
-        self.device_combo.grid(row=1, column=0, sticky="ew", pady=(5, 0))
+        self.device_combo.configure(width=18)
+        self.device_combo.grid(row=1, column=0, sticky="w", pady=(3, 0))
         ttk.Button(device, text="Refresh devices", command=self._refresh_fastboot_devices).grid(
-            row=1, column=1, padx=(8, 0), pady=(5, 0))
+            row=1, column=1, padx=(5, 0), pady=(3, 0))
 
         # Scrollable left workspace keeps every control reachable on short displays.
         left_scroll = ttk.Frame(tab)
-        left_scroll.grid(row=3, column=0, sticky="nsew", padx=(0, 10))
+        left_scroll.grid(row=3, column=0, sticky="nsew", padx=(0, 5))
         left_scroll.columnconfigure(0, weight=1)
         left_scroll.rowconfigure(0, weight=1)
         controls_canvas = tk.Canvas(left_scroll, bg="#111827", highlightthickness=0, borderwidth=0)
@@ -525,74 +765,109 @@ class PayloadDumperApp(TkinterDnD.Tk):
         ttk.Label(reference, textvariable=self.maintenance_status, background="#1f2937", foreground="#cbd5e1",
                   wraplength=320, justify="left", font=("Sans", 9)).pack(anchor="w", pady=(5, 0))
 
-        box = ttk.Frame(controls, style="Panel.TFrame", padding=12)
-        box.grid(row=1, column=0, sticky="ew", pady=(0, 8))
-        ttk.Label(box, text="IMAGE FILE", background="#1f2937", foreground="#93c5fd",
-                  font=("Sans", 10, "bold")).pack(anchor="w")
-        image_row = ttk.Frame(box, style="Panel.TFrame")
-        image_row.pack(fill="x", pady=(5, 0))
+        # Compact two-row flashing pipeline: file/partition/flash, then command/preview/run.
+        pipeline = ttk.Frame(controls, style="Panel.TFrame", padding=10)
+        pipeline.grid(row=1, column=0, sticky="ew", pady=(0, 12))
+        # Keep the action column wide enough for complete button labels.
+        pipeline.columnconfigure(0, weight=3, minsize=300, uniform="flash_pipeline")
+        pipeline.columnconfigure(1, weight=1, minsize=160, uniform="flash_pipeline")
+        pipeline.columnconfigure(2, weight=0, minsize=148, uniform="flash_pipeline")
+
+        def pipeline_label(parent, text):
+            ttk.Label(parent, text=text, background="#1f2937", foreground="#93c5fd",
+                      font=("Sans", 9, "bold")).pack(anchor="w", pady=(0, 4))
+
+        # Row 1 / column 1: single-line path field and adjacent Browse button.
+        image_cell = ttk.Frame(pipeline, style="Panel.TFrame")
+        image_cell.grid(row=0, column=0, sticky="ew", padx=(0, 8), pady=(0, 12))
+        pipeline_label(image_cell, "IMAGE FILE")
+        image_row = ttk.Frame(image_cell, style="Panel.TFrame")
+        image_row.pack(fill="x")
         self.flash_image = tk.StringVar()
         self.flash_entry = ttk.Entry(image_row, textvariable=self.flash_image)
         self.flash_entry.pack(side="left", fill="x", expand=True, ipady=4)
-        ttk.Button(image_row, text="Browse…", command=self._browse_flash_image).pack(side="left", padx=(7, 0))
-        self._enable_drop(box)
+        ttk.Button(image_row, text="Browse…", command=self._browse_flash_image,
+                   width=10).pack(side="left", padx=(6, 0), ipady=2)
+        self._enable_drop(image_cell)
         self._enable_drop(self.flash_entry)
-        self._enable_drop(tab)
 
-        partition = ttk.Frame(controls, style="Panel.TFrame", padding=12)
-        partition.grid(row=2, column=0, sticky="ew", pady=(0, 8))
-        ttk.Label(partition, text="TARGET PARTITION", background="#1f2937", foreground="#93c5fd",
-                  font=("Sans", 10, "bold")).pack(anchor="w")
+        # Row 1 / column 2: deliberately fixed-width target selector.
+        partition_cell = ttk.Frame(pipeline, style="Panel.TFrame")
+        partition_cell.grid(row=0, column=1, sticky="ew", padx=(0, 8), pady=(0, 12))
+        pipeline_label(partition_cell, "TARGET PARTITION")
         self.flash_partition = tk.StringVar()
         self.partition_combo = ttk.Combobox(
-            partition, textvariable=self.flash_partition,
+            partition_cell, textvariable=self.flash_partition,
             values=("boot", "vendor", "vendor_boot", "init_boot", "dtbo", "vbmeta", "recovery",
                     "system", "product", "odm", "system_ext", "vbmeta_system", "vbmeta_vendor"),
-            state="normal")
-        self.partition_combo.pack(fill="x", pady=(5, 0))
+            state="readonly", width=18)
+        self.partition_combo.pack(fill="x", ipady=2)
+        # Only explicit dropdown selection may change the flash target; scrolling must not.
+        def _block_partition_wheel(_event):
+            return "break"
+        # X11/Tk only defines wheel buttons 4 and 5; buttons 6/7 raise
+        # TclError on Linux and prevent the frozen AppImage from starting.
+        for _wheel_event in ("<MouseWheel>", "<Shift-MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.partition_combo.bind(_wheel_event, _block_partition_wheel)
 
-        preview = ttk.Frame(controls, style="Panel.TFrame", padding=12)
-        preview.grid(row=3, column=0, sticky="ew", pady=(0, 8))
-        ttk.Label(preview, text="COMMAND PREVIEW", background="#1f2937", foreground="#93c5fd",
-                  font=("Sans", 10, "bold")).pack(anchor="w")
-        self.flash_command = tk.StringVar(value="Select an image, partition, and Fastboot device.")
-        ttk.Label(preview, textvariable=self.flash_command, background="#0b1220", foreground="#f1f5f9",
-                  padding=9, wraplength=700, justify="left").pack(fill="x", pady=(5, 0))
+        # Row 1 / column 3: primary action, aligned with the controls.
+        flash_cell = ttk.Frame(pipeline, style="Panel.TFrame")
+        flash_cell.grid(row=0, column=2, sticky="ew", pady=(18, 12))
+        ttk.Button(flash_cell, text="Flash image…", command=self._flash_image,
+                   style="Primary.TButton", width=16).pack(fill="x", ipady=4)
 
-        ttk.Label(controls,
-                  text="FLASHING RISK · An incompatible image or incorrect partition can stop Android from booting. Verify compatibility before flashing.",
-                  foreground="#fecaca", background="#2a1d27", wraplength=850, justify="left",
-                  font=("Sans", 10), padding=10).grid(row=4, column=0, sticky="ew", pady=(0, 8))
-        flash_buttons = ttk.Frame(controls)
-        flash_buttons.grid(row=5, column=0, sticky="nw")
-        ttk.Button(flash_buttons, text="Preview command", command=self._update_flash_preview).pack(side="left")
-        ttk.Button(flash_buttons, text="Flash image…", command=self._flash_image).pack(side="left", padx=(7, 0))
-
-        # Advanced commands live below the flashing controls, not under the console.
-        manual = ttk.Frame(controls, style="Panel.TFrame", padding=12)
-        manual.grid(row=6, column=0, sticky="ew", pady=(10, 0))
-        ttk.Label(manual, text="ADVANCED FASTBOOT COMMAND", background="#1f2937",
-                  foreground="#93c5fd", font=("Sans", 11, "bold")).pack(anchor="w")
-        ttk.Label(manual, text="Run host-side commands such as fastboot devices, fastboot getvar all, or fastboot reboot. Paths with spaces are supported.",
-                  background="#1f2937", foreground="#cbd5e1", wraplength=800, justify="left").pack(
-                      anchor="w", pady=(4, 6))
+        # Row 2 / column 1: custom host-side Fastboot command.
+        command_cell = ttk.Frame(pipeline, style="Panel.TFrame")
+        command_cell.grid(row=1, column=0, sticky="ew", padx=(0, 8))
+        pipeline_label(command_cell, "ADVANCED FASTBOOT COMMAND")
         self.fastboot_manual_command = tk.StringVar(value="fastboot devices")
-        self.fastboot_manual_entry = ttk.Entry(manual, textvariable=self.fastboot_manual_command)
-        self.fastboot_manual_entry.pack(fill="x", pady=(0, 6), ipady=4)
-        manual_buttons = ttk.Frame(manual, style="Panel.TFrame")
-        manual_buttons.pack(fill="x")
-        ttk.Button(manual_buttons, text="Run Fastboot command", command=self._run_fastboot_manual).pack(side="left")
-        ttk.Button(manual_buttons, text="Clear", command=lambda: self.fastboot_manual_command.set("")).pack(
-            side="left", padx=(7, 0))
+        self.fastboot_manual_entry = ttk.Entry(command_cell, textvariable=self.fastboot_manual_command)
+        self.fastboot_manual_entry.pack(fill="x", ipady=4)
         self._enable_command_drop(self.fastboot_manual_entry, self.fastboot_manual_command, "fastboot")
 
+        # Row 2 / column 2: preview action and compact status.
+        preview_cell = ttk.Frame(pipeline, style="Panel.TFrame")
+        preview_cell.grid(row=1, column=1, sticky="ew", padx=(0, 8))
+        pipeline_label(preview_cell, "COMMAND PREVIEW")
+        ttk.Button(preview_cell, text="Preview command",
+                   command=self._update_flash_preview, width=16).pack(fill="x", ipady=4)
+
+        # Row 2 / column 3: execute the entered host-side command.
+        run_cell = ttk.Frame(pipeline, style="Panel.TFrame")
+        run_cell.grid(row=1, column=2, sticky="ew")
+        pipeline_label(run_cell, "RUN")
+        manual_buttons = ttk.Frame(run_cell, style="Panel.TFrame")
+        manual_buttons.pack(fill="x")
+        ttk.Button(manual_buttons, text="Run command", command=self._run_fastboot_manual,
+                   style="Primary.TButton", width=16).pack(fill="x", ipady=4)
+        ttk.Button(run_cell, text="Clear command",
+                   command=lambda: self.fastboot_manual_command.set(""),
+                   width=16).pack(fill="x", pady=(4, 0), ipady=2)
+
+        # Read-only preview stays separate from command execution and console output.
+        self.flash_command = tk.StringVar(value="Select an image, partition, and Fastboot device.")
+        preview_output = ttk.Label(controls, textvariable=self.flash_command,
+                                   background="#0b1220", foreground="#cbd5e1",
+                                   padding=(8, 5), font=("Monospace", 9), anchor="w")
+        preview_output.grid(row=2, column=0, sticky="ew", pady=(0, 8))
+
+        ttk.Label(controls,
+                  text="⚠ FLASHING RISK · An incompatible image or incorrect partition can prevent Android from booting. Verify compatibility before flashing.",
+                  foreground="#fecaca", background="#2a1d27", wraplength=850, justify="left",
+                  font=("Sans", 9), padding=8).grid(row=3, column=0, sticky="ew", pady=(0, 8))
+
+        self.flash_image.trace_add("write", lambda *_: self._on_flash_image_changed())
+        self._enable_drop(tab)
+
         # The console owns the full right workspace height for continuous output visibility.
-        right = ttk.Frame(tab, style="Panel.TFrame", padding=10)
+        right = ttk.Frame(tab, style="Panel.TFrame", padding=5)
         right.grid(row=3, column=1, sticky="nsew")
         right.columnconfigure(0, weight=1)
-        right.rowconfigure(0, weight=1)
+        right.rowconfigure(1, weight=1)
+
+        # Telemetry moved to the app header; the live console fills the right pane.
         console_panel = ttk.Frame(right, style="Panel.TFrame", padding=2)
-        console_panel.grid(row=0, column=0, sticky="nsew")
+        console_panel.grid(row=1, column=0, sticky="nsew")
         ttk.Label(console_panel, text="REAL-TIME CONSOLE / ACTIVITY", background="#1f2937",
                   foreground="#93c5fd", font=("Sans", 11, "bold")).pack(anchor="w", pady=(0, 5))
         fast_console_frame = ttk.Frame(console_panel, style="Panel.TFrame")
@@ -635,86 +910,98 @@ class PayloadDumperApp(TkinterDnD.Tk):
 
     def _build_adb_tab(self, tab):
         tab.columnconfigure(0, weight=1)
+        tab.rowconfigure(2, weight=0, minsize=0)
         tab.rowconfigure(3, weight=1)
-        ttk.Label(tab, text="ADB & Sideload", font=("Sans", 20, "bold")).grid(row=0, column=0, sticky="w", pady=(0, 8))
-        ttk.Label(tab, text="Reboot, collect logs and diagnostics, run device shell commands, or sideload an OTA ZIP from recovery.", style="Muted.TLabel", wraplength=1100).grid(row=1, column=0, sticky="w", pady=(0, 12))
-        device=ttk.Frame(tab,style="Panel.TFrame",padding=10); device.grid(row=2,column=0,sticky="ew",pady=(0,10))
+        modebar = ttk.Frame(tab)
+        modebar.grid(row=0, column=0, sticky="ew", pady=(0, 4))
+        ttk.Label(modebar, text="Device mode", font=(self._ui_font, 16, "bold")).pack(side="left", padx=(0, 12))
+        self.adb_workspace_mode_button = ttk.Button(modebar, text="ADB & Sideload",
+            command=lambda: self._show_device_workspace("adb", manual=True), style="Primary.TButton")
+        self.adb_workspace_mode_button.pack(side="left", padx=(0, 5))
+        self.fastboot_workspace_mode_button = ttk.Button(modebar, text="Fastboot & Flashing",
+            command=lambda: self._show_device_workspace("fastboot", manual=True))
+        self.fastboot_workspace_mode_button.pack(side="left")
+        ttk.Label(tab, text="Reboot, collect logs and diagnostics, run device shell commands, or sideload an OTA ZIP from recovery.", style="Muted.TLabel", wraplength=900).grid(row=1, column=0, sticky="w", pady=(0, 3))
+        device=ttk.Frame(tab,style="Panel.TFrame",padding=6); device.grid(row=2,column=0,sticky="ew",pady=(0,6))
         ttk.Label(device,text="ADB DEVICE",background="#1f2937",foreground="#93c5fd").pack(anchor="w")
         row=ttk.Frame(device,style="Panel.TFrame"); row.pack(fill="x",pady=(5,0))
-        self.adb_device=tk.StringVar(); self.adb_device_combo=ttk.Combobox(row,textvariable=self.adb_device,state="readonly"); self.adb_device_combo.pack(side="left",fill="x",expand=True)
+        self.adb_device=tk.StringVar(); self.adb_device_combo=ttk.Combobox(row,textvariable=self.adb_device,state="readonly"); self.adb_device_combo.configure(width=18); self.adb_device_combo.pack(side="left",anchor="w")
         ttk.Button(row,text="Refresh devices",command=self._refresh_adb_devices).pack(side="left",padx=(8,0))
         self.adb_device_status=tk.StringVar(value="Connect device or enter recovery sideload mode, then refresh.")
         self.device_mode_status = tk.StringVar(value="MODE DETECTOR: Waiting for device scan")
         ttk.Label(device,textvariable=self.device_mode_status,background="#1f2937",foreground="#86efac",
                   wraplength=1000,font=("Sans",10,"bold")).pack(anchor="w",pady=(6,0))
-        ttk.Label(device,textvariable=self.adb_device_status,background="#1f2937",foreground="#cbd5e1",wraplength=1000).pack(anchor="w",pady=(3,0))
+        ttk.Label(device,textvariable=self.adb_device_status,background="#1E222D",foreground="#94A3B8",wraplength=650).pack(anchor="w",pady=(2,0))
         # Controls remain on the left; device info and an expanded console share the right column.
-        workspace=ttk.Frame(tab); workspace.grid(row=3,column=0,sticky="nsew"); workspace.columnconfigure(0,weight=3,uniform="adb_workspace"); workspace.columnconfigure(1,weight=2,uniform="adb_workspace"); workspace.rowconfigure(0,weight=1)
+        workspace=ttk.Frame(tab); workspace.grid(row=3,column=0,sticky="nsew"); workspace.columnconfigure(0,weight=13,uniform="adb_workspace"); workspace.columnconfigure(1,weight=7,uniform="adb_workspace"); workspace.rowconfigure(0,weight=1)
         lower=ttk.Frame(workspace); lower.grid(row=0,column=0,sticky="nsew",padx=(0,10)); lower.columnconfigure(0,weight=1); lower.rowconfigure(2,weight=1)
         right=ttk.Frame(workspace); right.grid(row=0,column=1,sticky="nsew"); right.columnconfigure(0,weight=1); right.rowconfigure(1,weight=1)
-        adb_info = ttk.Frame(right, style="Panel.TFrame", padding=10)
+        adb_info = ttk.Frame(right, style="Panel.TFrame", padding=6)
         adb_info.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         adb_info.columnconfigure(1, weight=1)
-        ttk.Label(adb_info, text="DEVICE INFO", background="#1f2937", foreground="#93c5fd",
-                  font=("Sans", 11, "bold")).grid(row=0, column=0, sticky="w")
         self.adb_device_info_mode = tk.StringVar(value="NO DEVICE")
         self.adb_device_info_mode_label = tk.Label(adb_info, textvariable=self.adb_device_info_mode,
-            bg="#4b5563", fg="#fef3c7", padx=8, pady=3, font=("Sans", 9, "bold"))
-        self.adb_device_info_mode_label.grid(row=0, column=2, sticky="e")
+            bg="#065F46", fg="#FFFFFF", padx=7, pady=2, font=("Sans", 8, "bold"))
+        self.adb_device_info_mode_label.grid(row=0, column=0, sticky="w", padx=(0, 8))
         self.adb_info_loading = tk.StringVar(value="")
-        ttk.Label(adb_info, textvariable=self.adb_info_loading, background="#1f2937", foreground="#fbbf24").grid(row=0, column=1, sticky="e")
+        ttk.Label(adb_info, textvariable=self.adb_info_loading, background="#1E222D",
+                  foreground="#FBBF24").grid(row=0, column=6, sticky="e")
         self.adb_device_info_vars = {}
-        for row_idx, (key, initial) in enumerate((("Brand / Manufacturer", "—"), ("Device name / Model", "—"),
-                ("Model code", "—"), ("Codename", "—"), ("Active slot", "—"),
-                ("Android Version", "—"), ("Battery", "—")), start=1):
-            ttk.Label(adb_info, text=key + ":", background="#1f2937", foreground="#cbd5e1").grid(
-                row=row_idx, column=0, sticky="w", pady=1)
-            var = tk.StringVar(value=initial)
+        adb_fields = (("Device", "Device name / Model"), ("Codename", "Codename"),
+                      ("Slot", "Active slot"), ("Android", "Android Version"), ("Battery", "Battery"))
+        for col, (label, key) in enumerate(adb_fields, start=1):
+            cell = ttk.Frame(adb_info, style="Panel.TFrame")
+            cell.grid(row=0, column=col, sticky="w", padx=(0, 10))
+            ttk.Label(cell, text=label.upper(), background="#1E222D", foreground="#8B949E",
+                      font=("Sans", 8, "bold")).pack(side="left", padx=(0, 4))
+            var = tk.StringVar(value="—")
             self.adb_device_info_vars[key] = var
-            ttk.Label(adb_info, textvariable=var, background="#1f2937", foreground="#f8fafc",
-                      wraplength=300).grid(row=row_idx, column=1, sticky="w", padx=(8, 0), pady=1)
+            ttk.Label(cell, textvariable=var, background="#1E222D", foreground="#E6EDF3",
+                      font=(self._mono_font, 9)).pack(side="left")
         # Left-side controls were created in `lower`; keep the existing workspace and right column.
-        adb_console_panel=ttk.Frame(right,style="Panel.TFrame",padding=10); adb_console_panel.grid(row=1,column=0,sticky="nsew"); adb_console_panel.rowconfigure(1,weight=1); adb_console_panel.columnconfigure(0,weight=1)
+        adb_console_panel=ttk.Frame(right,style="Panel.TFrame",padding=4); adb_console_panel.grid(row=1,column=0,sticky="nsew"); adb_console_panel.rowconfigure(1,weight=1); adb_console_panel.columnconfigure(0,weight=1)
         ttk.Label(adb_console_panel,text="REAL-TIME CONSOLE / ACTIVITY",background="#1f2937",foreground="#93c5fd",font=("Sans",12,"bold")).grid(row=0,column=0,sticky="w",pady=(0,6))
         self.adb_console=tk.Text(adb_console_panel,bg="#0b1220",fg="#d1d5db",insertbackground="white",relief="flat",wrap="word",font=(self._mono_font,9),state="disabled")
         adb_console_scroll=ttk.Scrollbar(adb_console_panel,orient="vertical",command=self.adb_console.yview); adb_console_scroll.grid(row=1,column=1,sticky="ns"); self.adb_console.configure(yscrollcommand=adb_console_scroll.set); self.adb_console.grid(row=1,column=0,sticky="nsew")
         self._console_write(self.adb_console,"[DroidLab] ADB command output will appear here in real time.\n")
         actions=ttk.Frame(lower); actions.grid(row=0,column=0,sticky="ew",pady=(0,10))
-        power=ttk.Frame(actions,style="Panel.TFrame",padding=10); power.pack(side="left",fill="both",expand=True,padx=(0,8))
+        power=ttk.Frame(actions,style="Panel.TFrame",padding=6); power.pack(side="left",fill="both",expand=True,padx=(0,8))
         ttk.Label(power,text="POWER & REBOOTING",background="#1f2937",foreground="#93c5fd").pack(anchor="w",pady=(0,6))
         row=ttk.Frame(power,style="Panel.TFrame"); row.pack(fill="x")
+        for col in range(3): row.columnconfigure(col, weight=1, uniform="power_actions")
         self.reboot_button=ttk.Button(row,text="Reboot",command=lambda:self._adb_reboot(""))
-        self.reboot_button.pack(side="left",padx=(0,4))
+        self.reboot_button.grid(row=0,column=0,sticky="ew",padx=(0,3))
         self.bootloader_button=ttk.Button(row,text="Bootloader",command=lambda:self._adb_reboot("bootloader"))
-        self.bootloader_button.pack(side="left",padx=4)
+        self.bootloader_button.grid(row=0,column=1,sticky="ew",padx=3)
         self.recovery_button=ttk.Button(row,text="Recovery",command=lambda:self._adb_reboot("recovery"))
-        self.recovery_button.pack(side="left",padx=4)
-        diag=ttk.Frame(actions,style="Panel.TFrame",padding=10); diag.pack(side="left",fill="both",expand=True)
+        self.recovery_button.grid(row=0,column=2,sticky="ew",padx=(3,0))
+        diag=ttk.Frame(actions,style="Panel.TFrame",padding=6); diag.pack(side="left",fill="both",expand=True)
         ttk.Label(diag,text="LOGS & DIAGNOSTICS",background="#1f2937",foreground="#93c5fd").pack(anchor="w",pady=(0,6))
         row=ttk.Frame(diag,style="Panel.TFrame"); row.pack(fill="x")
-        ttk.Button(row,text="Live logcat",command=self._start_adb_logcat).pack(side="left",padx=(0,4))
-        ttk.Button(row,text="Save logcat…",command=self._save_adb_logcat).pack(side="left",padx=4)
-        ttk.Button(row,text="Bugreport ZIP…",command=self._create_adb_bugreport).pack(side="left",padx=4)
-        side=ttk.Frame(lower,style="Panel.TFrame",padding=10); side.grid(row=1,column=0,sticky="ew",pady=(0,10))
+        for col in range(3): row.columnconfigure(col, weight=1, uniform="diag_actions")
+        ttk.Button(row,text="Live logcat",command=self._start_adb_logcat).grid(row=0,column=0,sticky="ew",padx=(0,3))
+        ttk.Button(row,text="Save logcat…",command=self._save_adb_logcat).grid(row=0,column=1,sticky="ew",padx=3)
+        ttk.Button(row,text="Bugreport ZIP…",command=self._create_adb_bugreport).grid(row=0,column=2,sticky="ew",padx=(3,0))
+        side=ttk.Frame(lower,style="Panel.TFrame",padding=6); side.grid(row=1,column=0,sticky="ew",pady=(0,6))
         ttk.Label(side,text="ADB SIDELOAD — INSTALL ZIP PACKAGE",background="#1f2937",foreground="#93c5fd",font=("Sans",12,"bold")).pack(anchor="w")
         row=ttk.Frame(side,style="Panel.TFrame"); row.pack(fill="x",pady=(5,0))
         self.sideload_file=tk.StringVar(); self.sideload_entry=ttk.Entry(row,textvariable=self.sideload_file); self.sideload_entry.pack(side="left",fill="x",expand=True,ipady=4)
         ttk.Button(row,text="Browse ZIP…",command=self._browse_sideload_zip).pack(side="left",padx=(7,0))
-        ttk.Button(row,text="Sideload ZIP…",command=self._run_adb_sideload).pack(side="left",padx=(7,0))
-        drop_hint=ttk.Label(side,text="Drop a compatible flashable ZIP here, or use Browse ZIP…",background="#111827",foreground="#93c5fd",padding=8,wraplength=1100); drop_hint.pack(fill="x",pady=(7,0))
+        ttk.Button(row,text="Sideload ZIP…",command=self._run_adb_sideload,style="Primary.TButton").pack(side="left",padx=(7,0))
+        drop_hint=ttk.Label(side,text="⬇  Drop a flashable ZIP here or browse for a package.",background="#161922",foreground="#93c5fd",padding=7,wraplength=800); drop_hint.pack(fill="x",pady=(6,0))
         for drop_widget in (side, self.sideload_entry, drop_hint): self._enable_sideload_drop(drop_widget)
-        ttk.Label(side,text="Boot into a compatible recovery and choose Apply update from ADB (or its equivalent). Select the device marked [sideload]. Compatible packages may include OTA updates, custom ROMs, Magisk, kernels, or mods. Verify the package and recovery instructions for your exact device; not every ZIP supports sideload.",background="#1f2937",foreground="#cbd5e1",wraplength=1100).pack(anchor="w",pady=(5,0))
-        shell=ttk.Frame(lower,style="Panel.TFrame",padding=10); shell.grid(row=2,column=0,sticky="nsew"); shell.columnconfigure(0,weight=1); shell.rowconfigure(2,weight=1)
+        ttk.Label(side,text="Recovery must support ADB sideload. Check package compatibility.",background="#1E222D",foreground="#94A3B8",wraplength=800).pack(anchor="w",pady=(3,0))
+        shell=ttk.Frame(lower,style="Panel.TFrame",padding=6); shell.grid(row=2,column=0,sticky="nsew"); shell.columnconfigure(0,weight=1); shell.rowconfigure(2,weight=1)
         ttk.Label(shell,text="ADVANCED DEVICE SHELL",background="#1f2937",foreground="#93c5fd",font=("Sans",12,"bold")).grid(row=0,column=0,sticky="w")
         row=ttk.Frame(shell,style="Panel.TFrame"); row.grid(row=1,column=0,sticky="ew",pady=(5,7))
         self.adb_shell_command=tk.StringVar(value="dumpsys battery")
         self.adb_shell_entry=ttk.Entry(row,textvariable=self.adb_shell_command)
         self.adb_shell_entry.pack(side="left",fill="x",expand=True,ipady=4)
         self.adb_shell_entry.bind("<Return>",lambda _event:self._run_adb_shell())
-        ttk.Button(row,text="Run command",command=self._run_adb_shell).pack(side="left",padx=(7,0))
+        ttk.Button(row,text="Run command",command=self._run_adb_shell,style="Primary.TButton").pack(side="left",padx=(7,0))
         self._enable_command_drop(self.adb_shell_entry,self.adb_shell_command,"adb")
-        ttk.Label(shell,text="Tip: Enter device-shell commands (dumpsys battery) OR host commands (adb devices, adb reboot recovery). Do not type adb commands into the Android shell itself.",
-                  background="#1f2937",foreground="#cbd5e1",wraplength=1100,justify="left").grid(row=3,column=0,sticky="w",pady=(5,0))
+        ttk.Label(shell,text="Device shell: dumpsys battery  ·  Use ADB controls for host-side commands.",
+                  background="#1E222D",foreground="#94A3B8",wraplength=900,justify="left").grid(row=3,column=0,sticky="w",pady=(4,0))
         self.adb_output=tk.Text(shell,height=7,bg="#0b1220",fg="#d1d5db",insertbackground="white",relief="flat",wrap="word",font=("Monospace",10)); self.adb_output.grid(row=2,column=0,sticky="nsew")
         self.adb_output.insert("end","Select a device, then run dumpsys battery or another trusted shell command.\n"); self.adb_output.configure(state="disabled")
         self.adb_log_process = None
@@ -799,6 +1086,29 @@ class PayloadDumperApp(TkinterDnD.Tk):
                 if key in vars_map:
                     vars_map[key].set(value or "—")
 
+        header_vars = getattr(self, "header_device_vars", {})
+        targets = getattr(self, "_adb_targets", {})
+        selected = targets.get(getattr(self, "adb_device", tk.StringVar()).get())
+        serial = selected[0] if selected else ""
+        is_fastboot = bool(selected and selected[1] == "fastboot")
+        if header_vars:
+            header_vars["mode"].set("FASTBOOT" if is_fastboot and "Fastbootd" not in mode else
+                                    ("FASTBOOTD" if is_fastboot else (mode if selected else "NO DEVICE")))
+            header_vars["serial"].set(serial or "—")
+            header_vars["codename"].set(values.get("Codename") or values.get("Model code") or "—")
+            bootloader = values.get("Bootloader") or "—"
+            header_vars["bootloader"].set(bootloader.upper() if bootloader != "—" else "—")
+            self.header_mode_label.configure(fg="#F97316" if is_fastboot else "#8B949E")
+            boot_color = "#22C55E" if bootloader.lower() == "unlocked" else (
+                "#EF4444" if bootloader.lower() == "locked" else "#F59E0B")
+            self.header_bootloader_label.configure(fg=boot_color)
+            slot = (values.get("Active slot") or "").strip().lower().replace("_", "")
+            slot = slot[-1:] if slot.endswith(("a", "b")) else slot
+            for name, button in self.header_slot_buttons.items():
+                button.configure(state="normal" if is_fastboot else "disabled",
+                                 bg="#2563EB" if is_fastboot and slot == name else "#30363D",
+                                 fg="#FFFFFF" if is_fastboot and slot == name else "#8B949E")
+
     def _refresh_device_info(self):
         """Query selected device metadata asynchronously to keep the UI responsive."""
         target = getattr(self, "_adb_targets", {}).get(self.adb_device.get())
@@ -856,6 +1166,60 @@ class PayloadDumperApp(TkinterDnD.Tk):
         values, mode, color = result
         self._set_device_info(values, mode, color)
         if hasattr(self, "adb_info_loading"): self.adb_info_loading.set("")
+
+    def _set_active_slot(self, slot):
+        """Switch the selected Fastboot device's active slot with a legacy fallback."""
+        slot = str(slot).lower()
+        if slot not in ("a", "b"):
+            return
+        serial = self.fastboot_device.get().strip()
+        binary = self._tool_path("fastboot.exe" if os.name == "nt" else "fastboot") or self._tool_path("fastboot")
+        if not serial or not binary:
+            self._console_write(self.fastboot_console, "[DroidLab] Select a Fastboot device before changing slots.\n")
+            return
+        selected = getattr(self, "_adb_targets", {}).get(self.adb_device.get())
+        if selected and selected[1] != "fastboot":
+            self._console_write(self.fastboot_console, "[DroidLab] Slot switching is only available in Fastboot mode.\n")
+            return
+        for button in self.header_slot_buttons.values():
+            button.configure(state="disabled")
+
+        def worker():
+            commands = ([binary, "-s", serial, "--set-active=" + slot],
+                        [binary, "-s", serial, "set_active", slot])
+            lines = [f"[DroidLab] Request active slot {slot.upper()} on {serial}."]
+            success = False
+            for index, command in enumerate(commands):
+                rendered = " ".join(shlex.quote(part) for part in command)
+                lines.append("$ " + rendered)
+                try:
+                    result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8",
+                        errors="replace", timeout=12, check=False, **_windows_process_options())
+                    output = ((result.stdout or "") + (result.stderr or "")).strip()
+                    lines.append(output or f"(no output; exit code {result.returncode})")
+                    if result.returncode == 0:
+                        success = True
+                        break
+                    if index == 0:
+                        lines.append("Primary syntax failed; trying legacy set_active syntax.")
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    lines.append("ERROR: " + str(exc))
+                    if index == 0:
+                        lines.append("Trying legacy set_active syntax.")
+            lines.append("[DroidLab] Slot switch " + ("succeeded." if success else "failed."))
+            def finish():
+                for line in lines:
+                    self._console_write(self.fastboot_console, line + "\n")
+                if success:
+                    self._refresh_device_info()
+                else:
+                    for button in self.header_slot_buttons.values():
+                        button.configure(state="normal")
+            try:
+                self.after(0, finish)
+            except (RuntimeError, tk.TclError):
+                pass
+        threading.Thread(target=worker, name="DroidLab-SetActiveSlot", daemon=True).start()
 
     def _adb_read_value(self, binary, serial, args):
         try:
@@ -1414,6 +1778,8 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self._append("Fastboot scan: " + (", ".join(devices) if devices else "no devices found"))
         if devices:
             self._show_device_workspace("fastboot")
+        # Refresh telemetry (including fastboot getvar current-slot) after every scan.
+        self._refresh_device_info()
 
     def _update_flash_preview(self):
         image = self.flash_image.get().strip().strip(chr(34)).strip(chr(39)); part = self.flash_partition.get().strip(); serial = self.fastboot_device.get().strip()
@@ -1426,10 +1792,134 @@ class PayloadDumperApp(TkinterDnD.Tk):
         if not re.fullmatch(r"[A-Za-z0-9_.-]+", part): messagebox.showerror("Invalid partition", "Enter a valid partition name."); return
         if not serial: messagebox.showwarning("Select device", "Refresh devices and select exactly one Fastboot device."); return
         command = [binary, "-s", serial, "flash", part, str(image.resolve())]
-        detail = "Device: " + serial + "\nImage: " + str(image.resolve()) + "\nPartition: " + part + "\nCommand: " + " ".join(shlex.quote(x) for x in command) + "\n\nWrong or incompatible images can make the device unbootable. Verify this image is for this exact device and partition. Continue?"
-        if not messagebox.askyesno("Confirm flashing", detail, icon="warning"): self._append("Flash cancelled before execution."); return
+        rendered_command = " ".join(shlex.quote(x) for x in command)
+        if not self._confirm_flash_dialog(serial, image.resolve(), part, rendered_command):
+            self._append("Flash cancelled before execution.")
+            return
         self._append("Executing: " + " ".join(shlex.quote(x) for x in command)); self.status.set("Flashing image…"); self.update_idletasks()
         threading.Thread(target=self._adb_task, args=(command, 900, "fastboot_flash"), daemon=True).start()
+    def _confirm_flash_dialog(self, serial, image, partition, rendered_command):
+        """Show a compact, bounded confirmation dialog before any Fastboot flash."""
+        dialog = tk.Toplevel(self)
+        dialog.title("Confirm flashing")
+        dialog.configure(bg="#0F1117")
+        dialog.transient(self)
+        dialog.resizable(False, False)
+        dialog.withdraw()
+
+        surface = "#161B22"
+        border = "#30363D"
+        text = "#E6EDF3"
+        muted = "#8B949E"
+        mono = getattr(self, "_mono_font", "Consolas")
+        body = tk.Frame(dialog, bg="#0F1117", padx=18, pady=16)
+        body.pack(fill="both", expand=True)
+
+        heading = tk.Frame(body, bg="#0F1117")
+        heading.pack(fill="x", pady=(0, 14))
+        tk.Label(heading, text="⚠  Confirm flashing", bg="#0F1117", fg=text,
+                 font=("Sans", 15, "bold")).pack(side="left")
+        tk.Label(heading, text="VERIFY TARGET", bg="#3B2F16", fg="#FBBF24",
+                 padx=8, pady=3, font=("Sans", 8, "bold")).pack(side="right")
+
+        details = tk.Frame(body, bg=surface, highlightthickness=1, highlightbackground=border,
+                           padx=12, pady=10)
+        details.pack(fill="x")
+
+        def detail_row(row, label, value, *, value_font=None, value_color=text):
+            tk.Label(details, text=label.upper(), bg=surface, fg=muted,
+                     font=("Sans", 8, "bold"), anchor="w").grid(
+                         row=row, column=0, sticky="nw", padx=(0, 16), pady=5)
+            tk.Label(details, text=value, bg=surface, fg=value_color,
+                     font=value_font or ("Sans", 10, "normal"), anchor="w",
+                     justify="left", wraplength=420).grid(
+                         row=row, column=1, sticky="ew", pady=5)
+
+        details.columnconfigure(1, weight=1)
+        detail_row(0, "Device", serial, value_font=(mono, 10, "bold"))
+        tk.Label(details, text="TARGET PARTITION", bg=surface, fg=muted,
+                 font=("Sans", 8, "bold"), anchor="w").grid(
+                     row=1, column=0, sticky="w", padx=(0, 16), pady=5)
+        tk.Label(details, text="[" + partition + "]", bg="#3B2F16", fg="#FBBF24",
+                 padx=7, pady=3, font=(mono, 10, "bold")).grid(
+                     row=1, column=1, sticky="w", pady=5)
+        detail_row(2, "File name", image.name, value_font=(mono, 10, "bold"))
+
+        tk.Label(details, text="FULL PATH", bg=surface, fg=muted,
+                 font=("Sans", 8, "bold"), anchor="w").grid(
+                     row=3, column=0, sticky="nw", padx=(0, 16), pady=5)
+        path_entry = tk.Entry(details, bg="#0D1117", fg=muted, insertbackground=text,
+                              readonlybackground="#0D1117", relief="flat",
+                              font=(mono, 9), state="readonly")
+        path_entry.configure(state="normal")
+        path_entry.insert(0, str(image))
+        path_entry.configure(state="readonly")
+        path_entry.grid(row=3, column=1, sticky="ew", pady=5, ipady=5)
+
+        tk.Label(body, text="COMMAND PREVIEW", bg="#0F1117", fg=muted,
+                 font=("Sans", 8, "bold")).pack(anchor="w", pady=(12, 5))
+        command_box = tk.Frame(body, bg="#0D1117", highlightthickness=1,
+                               highlightbackground=border, padx=8, pady=7)
+        command_box.pack(fill="x")
+        command_entry = tk.Entry(command_box, bg="#0D1117", fg="#93C5FD",
+                                  insertbackground=text, relief="flat", font=(mono, 9),
+                                  state="normal", readonlybackground="#0D1117")
+        command_entry.insert(0, rendered_command)
+        command_entry.configure(state="readonly")
+        command_entry.grid(row=0, column=0, sticky="ew", ipady=3)
+        command_scroll = ttk.Scrollbar(command_box, orient="horizontal",
+                                        command=command_entry.xview)
+        command_scroll.grid(row=1, column=0, sticky="ew", pady=(5, 0))
+        command_entry.configure(xscrollcommand=command_scroll.set)
+        command_box.columnconfigure(0, weight=1)
+
+        warning = tk.Frame(body, bg="#2B2113", highlightthickness=1,
+                           highlightbackground="#6B4F1D", padx=10, pady=8)
+        warning.pack(fill="x", pady=(12, 0))
+        tk.Label(warning, text="⚠", bg="#2B2113", fg="#FBBF24",
+                 font=("Sans", 13, "bold")).pack(side="left", anchor="n", padx=(0, 9))
+        tk.Label(warning,
+                 text="An incompatible image or wrong partition can make the device unbootable. Verify the image matches this exact device and partition.",
+                 bg="#2B2113", fg="#FDE68A", font=("Sans", 9),
+                 justify="left", wraplength=440).pack(side="left", fill="x", expand=True)
+
+        actions = tk.Frame(body, bg="#0F1117")
+        actions.pack(fill="x", pady=(14, 0))
+        result = {"confirmed": False}
+
+        def close(confirmed=False):
+            result["confirmed"] = confirmed
+            try:
+                dialog.grab_release()
+            except tk.TclError:
+                pass
+            dialog.destroy()
+
+        tk.Button(actions, text="Cancel", command=lambda: close(False),
+                  bg="#30363D", fg=text, activebackground="#3B4552",
+                  activeforeground=text, relief="flat", padx=18, pady=7,
+                  font=("Sans", 10)).pack(side="right", padx=(8, 0))
+        tk.Button(actions, text="Flash Partition", command=lambda: close(True),
+                  bg="#B45309", fg="#FFFFFF", activebackground="#D97706",
+                  activeforeground="#FFFFFF", relief="flat", padx=18, pady=7,
+                  font=("Sans", 10, "bold")).pack(side="right")
+
+        dialog.bind("<Escape>", lambda _event: close(False))
+        dialog.bind("<Return>", lambda _event: close(False))
+        dialog.update_idletasks()
+        screen_w, screen_h = dialog.winfo_screenwidth(), dialog.winfo_screenheight()
+        requested_w = min(620, max(500, dialog.winfo_reqwidth()))
+        requested_h = min(dialog.winfo_reqheight(), max(360, screen_h - 100))
+        x = max(0, (screen_w - requested_w) // 2)
+        y = max(0, (screen_h - requested_h) // 2)
+        dialog.geometry(f"{requested_w}x{requested_h}+{x}+{y}")
+        dialog.minsize(500, min(300, requested_h))
+        dialog.deiconify()
+        dialog.grab_set()
+        dialog.focus_force()
+        self.wait_window(dialog)
+        return result["confirmed"]
+
     def _enable_drop(self, widget):
         """Allow files to be dropped onto the main window and source controls."""
         try:
