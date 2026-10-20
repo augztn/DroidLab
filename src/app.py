@@ -147,90 +147,6 @@ def _log_uncaught_exception(exc_type, exc_value, exc_traceback):
         return
     logging.critical("Uncaught application exception", exc_info=(exc_type, exc_value, exc_traceback))
 
-class ThemeManager:
-    """Centralized, live theme engine for ttk and native Tk widgets."""
-    COLOR_KEYS = ("bg", "panel", "panel_alt", "border", "text", "muted",
-                  "input", "accent", "accent2", "button", "console",
-                  "success", "warning", "danger")
-
-    def __init__(self, root, themes):
-        self.root = root
-        self.themes = themes
-        self.style = ttk.Style(root)
-        self.widgets = []
-
-    def register_tree(self, widget):
-        if widget not in self.widgets:
-            self.widgets.append(widget)
-        for child in widget.winfo_children():
-            self.register_tree(child)
-
-    def apply(self, theme_key):
-        if theme_key not in self.themes:
-            theme_key = "cyberpunk_glass"
-        old = getattr(self, "tokens", self.themes[theme_key])
-        t = self.themes[theme_key]
-        self.tokens = t
-        style = self.style
-        try:
-            if "clam" in style.theme_names():
-                style.theme_use("clam")
-        except tk.TclError:
-            pass
-        style.configure(".", background=t["bg"], foreground=t["text"], font=("TkDefaultFont", 9))
-        style.configure("TFrame", background=t["bg"])
-        style.configure("TLabel", background=t["bg"], foreground=t["text"])
-        style.configure("Title.TLabel", background=t["bg"], foreground=t["text"])
-        style.configure("Muted.TLabel", background=t["bg"], foreground=t["muted"])
-        style.configure("TButton", background=t["button"], foreground=t["text"],
-                        bordercolor=t["border"], padding=(10, 6), relief="flat")
-        style.map("TButton", background=[("pressed", t["accent2"]), ("active", t["panel_alt"])],
-                  foreground=[("disabled", t["muted"]), ("active", t["text"])],
-                  bordercolor=[("focus", t["accent"])])
-        style.configure("Primary.TButton", background=t["accent2"], foreground="#FFFFFF",
-                        bordercolor=t["accent"], padding=(10, 6), relief="flat")
-        style.map("Primary.TButton", background=[("active", t["accent"])])
-        style.configure("TEntry", fieldbackground=t["input"], foreground=t["text"],
-                        insertcolor=t["text"], bordercolor=t["border"])
-        style.configure("TCombobox", fieldbackground=t["input"], foreground=t["text"],
-                        background=t["button"], arrowcolor=t["accent"])
-        style.map("TCombobox", fieldbackground=[("readonly", t["input"])],
-                  foreground=[("readonly", t["text"])])
-        style.configure("TNotebook", background=t["bg"], borderwidth=0)
-        style.configure("TNotebook.Tab", background=t["panel"], foreground=t["muted"], padding=(12, 7))
-        style.map("TNotebook.Tab", background=[("selected", t["panel_alt"])],
-                  foreground=[("selected", t["accent"])])
-        style.configure("Treeview", background=t["input"], fieldbackground=t["input"],
-                        foreground=t["text"], bordercolor=t["border"], rowheight=25)
-        style.configure("Treeview.Heading", background=t["panel_alt"], foreground=t["text"])
-        style.map("Treeview", background=[("selected", t["accent2"])], foreground=[("selected", "#FFFFFF")])
-        style.configure("TCheckbutton", background=t["bg"], foreground=t["text"])
-        style.configure("TRadiobutton", background=t["bg"], foreground=t["text"])
-        # Replace known palette colors in native Tk widgets, including nested cards.
-        replacements = {old.get(k): t.get(k) for k in self.COLOR_KEYS if old.get(k) and t.get(k)}
-        for widget in list(self.widgets):
-            try:
-                options = widget.configure()
-                for option in ("background", "bg", "highlightbackground", "highlightcolor",
-                               "foreground", "fg", "insertbackground", "selectbackground",
-                               "selectforeground", "troughcolor"):
-                    if option not in options:
-                        continue
-                    current = str(widget.cget(option))
-                    replacement = replacements.get(current.lower(), replacements.get(current))
-                    if replacement:
-                        widget.configure(**{option: replacement})
-                if isinstance(widget, (tk.Text, tk.Entry, tk.Listbox)):
-                    widget.configure(insertbackground=t["accent"])
-            except (tk.TclError, TypeError):
-                continue
-        try:
-            self.root.configure(bg=t["bg"])
-        except tk.TclError:
-            pass
-        return t
-
-
 class PayloadDumperApp(TkinterDnD.Tk):
     def __init__(self):
         super().__init__()
@@ -243,7 +159,6 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.minsize(900, 600)
         self.theme_name = self._load_theme_name()
         self.theme_tokens = THEME_TOKENS[self.theme_name]
-        self.theme_manager = ThemeManager(self, THEME_TOKENS)
         self.configure(bg=self.theme_tokens["bg"])
         self._ui_font = "Segoe UI" if os.name == "nt" else "Sans"
         self._mono_font = "Consolas" if os.name == "nt" else "Monospace"
@@ -272,33 +187,38 @@ class PayloadDumperApp(TkinterDnD.Tk):
         if name not in THEME_TOKENS:
             return
         self.theme_name = name
-        self.theme_tokens = self.theme_manager.apply(name)
-        self.theme_manager.register_tree(self)
-        # Keep header-specific accents consistent after recoloring the widget tree.
-        t = self.theme_tokens
-        for attr, options in (
-            ("header_mode_label", {"fg": t["warning"] if self.header_device_vars["mode"].get() == "FASTBOOT" else t["accent"]}),
-            ("header_bootloader_label", {"fg": t["success"] if "unlock" in self.header_device_vars["bootloader"].get().lower() else t["warning"]}),
-            ("theme_button", {"bg": t["panel"], "fg": t["muted"], "activebackground": t["panel_alt"]}),
-        ):
+        self.theme_tokens = t = THEME_TOKENS[name]
+        self.configure(bg=t["bg"])
+        style = ttk.Style(self)
+        style.configure("TFrame", background=t["bg"])
+        style.configure("Panel.TFrame", background=t["panel"], bordercolor=t["border"])
+        style.configure("TLabel", background=t["bg"], foreground=t["text"])
+        style.configure("Title.TLabel", background=t["bg"], foreground=t["text"])
+        style.configure("Muted.TLabel", background=t["bg"], foreground=t["muted"])
+        style.configure("TButton", background=t["button"], foreground=t["text"], padding=(9, 5), relief="flat")
+        style.map("TButton", background=[("active", t["border"]), ("pressed", t["accent2"])],
+                  foreground=[("disabled", t["muted"]), ("active", t["text"])])
+        style.configure("Primary.TButton", background=t["accent2"], foreground="#ffffff", padding=(10, 5))
+        style.map("Primary.TButton", background=[("active", t["accent"])])
+        style.configure("TEntry", fieldbackground=t["input"], foreground=t["text"], insertcolor=t["text"])
+        style.configure("TCombobox", fieldbackground=t["input"], background=t["button"], foreground=t["text"], arrowcolor=t["accent"])
+        style.configure("Treeview", background=t["input"], fieldbackground=t["input"], foreground=t["text"])
+        style.configure("Treeview.Heading", background=t["panel"], foreground=t["text"])
+        for attr in ("log", "fastboot_console", "adb_console"):
             widget = getattr(self, attr, None)
             if widget:
-                try: widget.configure(**options)
+                try: widget.configure(bg=t["console"], fg=t["text"], insertbackground=t["text"])
                 except tk.TclError: pass
-        for slot, button in getattr(self, "header_slot_buttons", {}).items():
-            try:
-                active = self.header_device_vars.get("slot", tk.StringVar(value="")).get().lower().endswith(slot)
-                button.configure(bg=t["accent"] if active else t["button"],
-                                 fg="#07111B" if active and self.theme_name == "cyberpunk_glass" else t["text"])
-            except tk.TclError:
-                pass
+        if hasattr(self, "header_telemetry"):
+            try: self.header_telemetry.configure(bg=t["panel"], highlightbackground=t["border"])
+            except tk.TclError: pass
+        if hasattr(self, "theme_button"):
+            self.theme_button.configure(bg=t["panel"], fg=t["muted"], activebackground=t["button"])
         try:
             path = _settings_path()
             path.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                config = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
-            except (OSError, ValueError):
-                config = {}
+            try: config = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+            except (OSError, ValueError): config = {}
             config["theme"] = name
             path.write_text(json.dumps(config, indent=2), encoding="utf-8")
         except OSError as exc:
