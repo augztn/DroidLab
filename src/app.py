@@ -8,7 +8,8 @@ from tkinter import filedialog, font as tkfont, messagebox, ttk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from pathlib import Path
 from payload_dumper import BackendError, extract, inspect_source, sha256_file
-from command_guards import (is_destructive_adb, is_destructive_fastboot, is_valid_partition_name,\n                            validate_device_selector)
+from command_guards import (is_destructive_adb, is_destructive_fastboot, is_valid_partition_name,
+                            validate_device_selector)
 from ui_metrics import column_width, tree_row_height
 
 def _windows_process_options():
