@@ -1765,7 +1765,6 @@ class PayloadDumperApp(TkinterDnD.Tk):
         command = [binary] + tokens
         rendered = " ".join(shlex.quote(x) for x in command)
         if is_destructive_fastboot(tokens):
-        if destructive.search(" ".join(tokens)):
             if not messagebox.askyesno("Confirm potentially destructive Fastboot command", "Verify the connected device, image, and partition before continuing.\n\n" + rendered + "\n\nThis operation may erase data or make the device unbootable. Continue?", icon="warning"):
                 self._append("Manual Fastboot command cancelled: " + rendered)
                 return
