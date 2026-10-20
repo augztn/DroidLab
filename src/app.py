@@ -578,9 +578,13 @@ class PayloadDumperApp(TkinterDnD.Tk):
             self.flash_workspace.tkraise()
         else:
             self.adb_workspace.tkraise()
-        if hasattr(self, "fastboot_mode_button") and hasattr(self, "adb_mode_button"):
-            self.fastboot_mode_button.configure(style="Primary.TButton" if mode == "fastboot" else "TButton")
-            self.adb_mode_button.configure(style="Primary.TButton" if mode == "adb" else "TButton")
+        for attr, selected in (("fastboot_header_mode_button", mode == "fastboot"),
+                               ("adb_header_mode_button", mode == "adb"),
+                               ("fastboot_workspace_mode_button", mode == "fastboot"),
+                               ("adb_workspace_mode_button", mode == "adb")):
+            button = getattr(self, attr, None)
+            if button:
+                button.configure(style="Primary.TButton" if selected else "TButton")
 
     def _on_shared_device_selected(self):
         target = getattr(self, "_adb_targets", {}).get(self.adb_device.get())
@@ -615,12 +619,12 @@ class PayloadDumperApp(TkinterDnD.Tk):
         modebar = ttk.Frame(tab)
         modebar.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 6))
         ttk.Label(modebar, text="Device mode", font=(self._ui_font, 16, "bold")).pack(side="left", padx=(0, 12))
-        self.fastboot_mode_button = ttk.Button(modebar, text="Fastboot & Flashing",
+        self.fastboot_header_mode_button = ttk.Button(modebar, text="Fastboot & Flashing",
             command=lambda: self._show_device_workspace("fastboot", manual=True), style="Primary.TButton")
-        self.fastboot_mode_button.pack(side="left", padx=(0, 5))
-        self.adb_mode_button = ttk.Button(modebar, text="ADB & Sideload",
+        self.fastboot_header_mode_button.pack(side="left", padx=(0, 5))
+        self.adb_header_mode_button = ttk.Button(modebar, text="ADB & Sideload",
             command=lambda: self._show_device_workspace("adb", manual=True))
-        self.adb_mode_button.pack(side="left")
+        self.adb_header_mode_button.pack(side="left")
         ttk.Label(tab, text="Choose a device, then select a maintenance or flashing action.",
                   style="Muted.TLabel").grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 5))
 
@@ -845,12 +849,12 @@ class PayloadDumperApp(TkinterDnD.Tk):
         modebar = ttk.Frame(tab)
         modebar.grid(row=0, column=0, sticky="ew", pady=(0, 4))
         ttk.Label(modebar, text="Device mode", font=(self._ui_font, 16, "bold")).pack(side="left", padx=(0, 12))
-        self.adb_mode_button = ttk.Button(modebar, text="ADB & Sideload",
+        self.adb_workspace_mode_button = ttk.Button(modebar, text="ADB & Sideload",
             command=lambda: self._show_device_workspace("adb", manual=True), style="Primary.TButton")
-        self.adb_mode_button.pack(side="left", padx=(0, 5))
-        self.fastboot_mode_button = ttk.Button(modebar, text="Fastboot & Flashing",
+        self.adb_workspace_mode_button.pack(side="left", padx=(0, 5))
+        self.fastboot_workspace_mode_button = ttk.Button(modebar, text="Fastboot & Flashing",
             command=lambda: self._show_device_workspace("fastboot", manual=True))
-        self.fastboot_mode_button.pack(side="left")
+        self.fastboot_workspace_mode_button.pack(side="left")
         ttk.Label(tab, text="Reboot, collect logs and diagnostics, run device shell commands, or sideload an OTA ZIP from recovery.", style="Muted.TLabel", wraplength=900).grid(row=1, column=0, sticky="w", pady=(0, 3))
         device=ttk.Frame(tab,style="Panel.TFrame",padding=6); device.grid(row=2,column=0,sticky="ew",pady=(0,6))
         ttk.Label(device,text="ADB DEVICE",background="#1f2937",foreground="#93c5fd").pack(anchor="w")
