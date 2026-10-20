@@ -18,7 +18,13 @@ fi
 install -m 0755 "$WORK/pyinstaller-dist/droidlab-gui" "$APPDIR/usr/bin/droidlab-gui-bin"
 BACKEND_ARCH="linux_amd64"; if [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then BACKEND_ARCH="linux_arm64"; fi
 BACKEND_ARCHIVE="payload-dumper-go_${BACKEND_VERSION}_${BACKEND_ARCH}.tar.gz"
+case "$BACKEND_VERSION:$BACKEND_ARCH" in
+  "2.1.0:linux_amd64") BACKEND_SHA256="bbbb53a71955c69272afdef7bc7e83a1bb1770f453d0c21dcaf61a3ba0463c11" ;;
+  "2.1.0:linux_arm64") BACKEND_SHA256="5743a39b48d0c4dab948ad6e5d9ff275e649528e5dfd2b7db4b6893093b70f6c" ;;
+  *) echo "No verified payload-dumper-go checksum for $BACKEND_VERSION / $BACKEND_ARCH" >&2; exit 1 ;;
+esac
 wget -q --show-progress "https://github.com/ssut/payload-dumper-go/releases/download/${BACKEND_VERSION}/${BACKEND_ARCHIVE}" -O "$WORK/$BACKEND_ARCHIVE"
+echo "$BACKEND_SHA256  $WORK/$BACKEND_ARCHIVE" | sha256sum --check --status || { echo "payload-dumper-go SHA-256 mismatch" >&2; exit 1; }
 mkdir -p "$WORK/backend"; tar -xzf "$WORK/$BACKEND_ARCHIVE" -C "$WORK/backend"
 BACKEND_PATH="$(find "$WORK/backend" -type f -name payload-dumper-go -print -quit)"
 [[ -n "$BACKEND_PATH" ]] || { echo "payload-dumper-go not found in release archive" >&2; exit 1; }
@@ -76,7 +82,12 @@ SVG
 cp "$APPDIR/usr/share/applications/droidlab.desktop" "$APPDIR/droidlab.desktop"
 cp "$APPDIR/usr/share/icons/hicolor/scalable/apps/droidlab.svg" "$APPDIR/droidlab.svg"
 printf "%s\n" "$VERSION" > "$APPDIR/VERSION"; printf "%s\n" "$ARCH" > "$APPDIR/ARCH"
-wget -q "https://raw.githubusercontent.com/ssut/payload-dumper-go/main/LICENSE" -O "$APPDIR/usr/share/licenses/payload-dumper-go/LICENSE"
+wget -q "https://raw.githubusercontent.com/ssut/payload-dumper-go/${BACKEND_VERSION}/LICENSE" -O "$APPDIR/usr/share/licenses/payload-dumper-go/LICENSE"
 if ! command -v appimagetool >/dev/null; then echo "appimagetool not found; AppDir prepared at $APPDIR" >&2; exit 2; fi
-ARCH="$ARCH" appimagetool "$APPDIR" "$DIST_DIR/${APP_NAME}-${VERSION}-${ARCH}.AppImage"
+APPIMAGE_ARGS=()
+if [[ -n "${APPIMAGE_RUNTIME_FILE:-}" ]]; then
+  [[ -f "$APPIMAGE_RUNTIME_FILE" ]] || { echo "Pinned AppImage runtime not found: $APPIMAGE_RUNTIME_FILE" >&2; exit 1; }
+  APPIMAGE_ARGS+=(--runtime-file "$APPIMAGE_RUNTIME_FILE")
+fi
+ARCH="$ARCH" appimagetool "${APPIMAGE_ARGS[@]}" "$APPDIR" "$DIST_DIR/${APP_NAME}-${VERSION}-${ARCH}.AppImage"
 echo "Created $DIST_DIR/${APP_NAME}-${VERSION}-${ARCH}.AppImage"

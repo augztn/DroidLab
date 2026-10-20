@@ -8,6 +8,7 @@ from tkinter import filedialog, messagebox, ttk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from pathlib import Path
 from payload_dumper import BackendError, extract, inspect_source, sha256_file
+from command_guards import is_destructive_adb, is_destructive_fastboot, is_valid_partition_name
 
 def _windows_process_options():
     """Keep ADB/Fastboot subprocesses from flashing console windows on Windows."""
@@ -26,72 +27,55 @@ APP_NAME = "DroidLab"  # Canonical product name.
 
 THEME_TOKENS = {
     "cyberpunk_glass": {
-        "label": "Cyberpunk Glass",
-        "bg": "#0B0F17",
-        "panel": "#131A26",
-        "panel_alt": "#1C2638",
-        "border": "#1F2C40",
-        "text": "#F8FAFC",
-        "muted": "#94A3B8",
-        "input": "#0D1420",
-        "accent": "#00D2FF",
-        "accent2": "#8B5CF6",
-        "button": "#1C2638",
-        "console": "#080C12",
-        "success": "#10B981",
-        "warning": "#F59E0B",
-        "danger": "#F87171"
+        "label": "Cyberpunk Neon",
+        "bg": "#0d1117",
+        "panel": "#161f30",
+        "panel_alt": "#1c2940",
+        "border": "#24415b",
+        "text": "#f8fafc",
+        "muted": "#94a3b8",
+        "input": "#0b1422",
+        "accent": "#00d2ff",
+        "accent2": "#8b5cf6",
+        "button": "#1c2940",
+        "console": "#080c12",
+        "success": "#10b981",
+        "warning": "#f59e0b",
+        "danger": "#f87171"
     },
     "standard_dark": {
         "label": "Standard Dark",
-        "bg": "#111318",
-        "panel": "#1C202A",
-        "panel_alt": "#252B38",
-        "border": "#2C3242",
-        "text": "#E2E8F0",
-        "muted": "#94A3B8",
-        "input": "#141821",
-        "accent": "#3B82F6",
-        "accent2": "#6366F1",
-        "button": "#252B38",
-        "console": "#0B0D12",
-        "success": "#10B981",
-        "warning": "#F59E0B",
-        "danger": "#F87171"
-    },
-    "standard_light": {
-        "label": "Standard Light",
-        "bg": "#F1F5F9",
-        "panel": "#FFFFFF",
-        "panel_alt": "#E2E8F0",
-        "border": "#CBD5E1",
-        "text": "#0F172A",
-        "muted": "#64748B",
-        "input": "#FFFFFF",
-        "accent": "#2563EB",
-        "accent2": "#7C3AED",
-        "button": "#E2E8F0",
-        "console": "#F8FAFC",
-        "success": "#047857",
-        "warning": "#B45309",
-        "danger": "#B91C1C"
+        "bg": "#121214",
+        "panel": "#1c1c20",
+        "panel_alt": "#25252c",
+        "border": "#2e2e36",
+        "text": "#e4e4e7",
+        "muted": "#a1a1aa",
+        "input": "#141418",
+        "accent": "#3b82f6",
+        "accent2": "#6366f1",
+        "button": "#25252c",
+        "console": "#09090b",
+        "success": "#10b981",
+        "warning": "#f59e0b",
+        "danger": "#f87171"
     },
     "oled_black": {
         "label": "OLED Black",
         "bg": "#000000",
-        "panel": "#0F0F0F",
-        "panel_alt": "#171717",
+        "panel": "#0a0a0a",
+        "panel_alt": "#151515",
         "border": "#222222",
-        "text": "#F8FAFC",
-        "muted": "#A3A3A3",
+        "text": "#fafafa",
+        "muted": "#a3a3a3",
         "input": "#050505",
-        "accent": "#38BDF8",
-        "accent2": "#818CF8",
+        "accent": "#e5e7eb",
+        "accent2": "#a1a1aa",
         "button": "#171717",
         "console": "#000000",
-        "success": "#34D399",
-        "warning": "#FBBF24",
-        "danger": "#F87171"
+        "success": "#34d399",
+        "warning": "#fbbf24",
+        "danger": "#f87171"
     }
 }
 
@@ -184,36 +168,151 @@ class PayloadDumperApp(TkinterDnD.Tk):
             return "cyberpunk_glass"
 
     def _apply_theme(self, name):
+        """Apply a palette live; intentionally does not touch device/backend logic."""
         if name not in THEME_TOKENS:
             return
+        old_tokens = getattr(self, "theme_tokens", THEME_TOKENS[name])
         self.theme_name = name
         self.theme_tokens = t = THEME_TOKENS[name]
         self.configure(bg=t["bg"])
         style = ttk.Style(self)
+        try:
+            if "clam" in style.theme_names():
+                style.theme_use("clam")
+        except tk.TclError:
+            pass
+        style.configure(".", background=t["bg"], foreground=t["text"])
         style.configure("TFrame", background=t["bg"])
-        style.configure("Panel.TFrame", background=t["panel"], bordercolor=t["border"])
+        style.configure("Panel.TFrame", background=t["panel"], bordercolor=t["border"], relief="flat")
         style.configure("TLabel", background=t["bg"], foreground=t["text"])
+        style.configure("PanelHeading.TLabel", background=t["panel"], foreground=t["accent"],
+                        font=(self._ui_font, 10, "bold"))
+        style.configure("PanelMuted.TLabel", background=t["panel"], foreground=t["muted"])
         style.configure("Title.TLabel", background=t["bg"], foreground=t["text"])
         style.configure("Muted.TLabel", background=t["bg"], foreground=t["muted"])
-        style.configure("TButton", background=t["button"], foreground=t["text"], padding=(9, 5), relief="flat")
-        style.map("TButton", background=[("active", t["border"]), ("pressed", t["accent2"])],
-                  foreground=[("disabled", t["muted"]), ("active", t["text"])])
-        style.configure("Primary.TButton", background=t["accent2"], foreground="#ffffff", padding=(10, 5))
+        style.configure("TButton", background=t["button"], foreground=t["text"],
+                        padding=(12, 7), bordercolor=t["border"], relief="flat")
+        style.map("TButton", background=[("pressed", t["accent2"]), ("active", t["panel_alt"])],
+                  foreground=[("disabled", t["muted"]), ("active", t["text"])],
+                  bordercolor=[("focus", t["accent"])])
+        style.configure("Primary.TButton", background=t["accent2"], foreground="#ffffff",
+                        padding=(14, 7), bordercolor=t["accent"])
         style.map("Primary.TButton", background=[("active", t["accent"])])
-        style.configure("TEntry", fieldbackground=t["input"], foreground=t["text"], insertcolor=t["text"])
-        style.configure("TCombobox", fieldbackground=t["input"], background=t["button"], foreground=t["text"], arrowcolor=t["accent"])
-        style.configure("Treeview", background=t["input"], fieldbackground=t["input"], foreground=t["text"])
-        style.configure("Treeview.Heading", background=t["panel"], foreground=t["text"])
+        style.configure("TEntry", fieldbackground=t["input"], foreground=t["text"],
+                        insertcolor=t["text"], bordercolor=t["border"], padding=6)
+        style.configure("TCombobox", fieldbackground=t["input"], background=t["button"],
+                        foreground=t["text"], arrowcolor=t["accent"], padding=5)
+        style.map("TCombobox", fieldbackground=[("readonly", t["input"])],
+                  foreground=[("readonly", t["text"])])
+        style.configure("TCheckbutton", background=t["panel"], foreground=t["text"])
+        style.configure("TRadiobutton", background=t["panel"], foreground=t["text"])
+        style.configure("Treeview", background=t["input"], fieldbackground=t["input"],
+                        foreground=t["text"], bordercolor=t["border"], rowheight=27)
+        style.configure("Treeview.Heading", background=t["panel_alt"], foreground=t["text"])
+        style.map("Treeview", background=[("selected", t["accent2"])],
+                  foreground=[("selected", "#ffffff")])
+        style.configure("TNotebook", background=t["bg"], borderwidth=0, tabmargins=(3, 5, 3, 0))
+        style.configure("TNotebook.Tab", background=t["panel"], foreground=t["muted"],
+                        padding=(16, 9), borderwidth=0)
+        style.map("TNotebook.Tab", background=[("selected", t["panel_alt"]), ("active", t["button"])],
+                  foreground=[("selected", t["accent"]), ("active", t["text"])])
+
+        # Recolor native Tk widgets as well as ttk. Preserve semantic colors
+        # (green/red/amber status indicators) and only replace known surfaces.
+        # Re-map legacy colors and the previous theme's token colors so repeated
+        # live theme switches continue to recolor existing native Tk widgets.
+        color_roles = ("bg", "panel", "panel_alt", "border", "text", "muted",
+                       "input", "accent", "accent2", "button", "console")
+        old_token_colors = {str(old_tokens[key]).lower(): t[key]
+                            for key in color_roles if key in old_tokens and key in t}
+        old_surface = {
+            "#161922": t["panel"], "#161b22": t["panel"], "#1e222d": t["panel"],
+            "#1f2937": t["panel"], "#111827": t["bg"], "#0b1220": t["console"],
+            "#0d1117": t["bg"], "#2a3040": t["border"], "#30363d": t["border"],
+            "#334155": t["panel_alt"], "#263449": t["button"],
+        }
+        old_surface.update({str(old_tokens[key]).lower(): t[key]
+                            for key in ("bg", "panel", "panel_alt", "border", "input", "console", "button")
+                            if key in old_tokens and key in t})
+        for widget in self._walk_widgets(self):
+            try:
+                kind = widget.winfo_class()
+                if kind in ("Frame", "Labelframe", "Toplevel"):
+                    current = str(widget.cget("bg")).lower()
+                    if current in old_surface:
+                        widget.configure(bg=old_surface[current])
+                    try:
+                        widget.configure(highlightbackground=t["border"])
+                    except tk.TclError:
+                        pass
+                elif kind == "Label":
+                    bg = str(widget.cget("bg")).lower()
+                    fg = str(widget.cget("fg")).lower()
+                    if bg in old_surface:
+                        widget.configure(bg=old_surface[bg])
+                    if fg in old_token_colors:
+                        widget.configure(fg=old_token_colors[fg])
+                    elif fg in ("#f3f4f6", "#f8fafc", "#e6edf3", "#d1d5db", "#cbd5e1"):
+                        widget.configure(fg=t["text"])
+                    elif fg in ("#94a3b8", "#8b949e"):
+                        widget.configure(fg=t["muted"])
+                elif kind == "Button":
+                    options = {}
+                    for option, mapping in (("bg", old_surface), ("activebackground", old_surface),
+                                            ("fg", old_token_colors), ("activeforeground", old_token_colors)):
+                        try:
+                            current = str(widget.cget(option)).lower()
+                            if current in mapping:
+                                options[option] = mapping[current]
+                        except tk.TclError:
+                            pass
+                    if options:
+                        widget.configure(**options)
+                elif kind in ("Text", "Entry", "Listbox"):
+                    try:
+                        widget.configure(
+                            bg=t["console"] if widget in (
+                                getattr(self, "log", None), getattr(self, "fastboot_console", None),
+                                getattr(self, "adb_console", None),
+                            ) else t["input"],
+                            fg=t["text"], insertbackground=t["accent"],
+                        )
+                    except tk.TclError:
+                        pass
+            except (tk.TclError, TypeError):
+                continue
+
         for attr in ("log", "fastboot_console", "adb_console"):
             widget = getattr(self, attr, None)
             if widget:
-                try: widget.configure(bg=t["console"], fg=t["text"], insertbackground=t["text"])
-                except tk.TclError: pass
+                try:
+                    widget.configure(bg=t["console"], fg=t["text"], insertbackground=t["accent"])
+                except tk.TclError:
+                    pass
         if hasattr(self, "header_telemetry"):
-            try: self.header_telemetry.configure(bg=t["panel"], highlightbackground=t["border"])
-            except tk.TclError: pass
+            try:
+                self.header_telemetry.configure(bg=t["panel"], highlightbackground=t["border"])
+            except tk.TclError:
+                pass
+        if hasattr(self, "header_status_label"):
+            try:
+                self.header_status_label.configure(bg=t["panel"], fg=t["text"])
+            except tk.TclError:
+                pass
         if hasattr(self, "theme_button"):
-            self.theme_button.configure(bg=t["panel"], fg=t["muted"], activebackground=t["button"])
+            try:
+                self.theme_button.configure(bg=t["panel"], fg=t["muted"],
+                                            activebackground=t["panel_alt"], activeforeground=t["accent"])
+            except tk.TclError:
+                pass
+        for slot, button in getattr(self, "header_slot_buttons", {}).items():
+            try:
+                active = getattr(self, "header_device_vars", {}).get("slot", tk.StringVar(value="")).get().lower().endswith(slot)
+                button.configure(bg=t["accent"] if active else t["button"],
+                                 fg="#07111B" if active and name == "cyberpunk_glass" else t["text"],
+                                 activebackground=t["accent2"])
+            except tk.TclError:
+                pass
         try:
             path = _settings_path()
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -223,6 +322,13 @@ class PayloadDumperApp(TkinterDnD.Tk):
             path.write_text(json.dumps(config, indent=2), encoding="utf-8")
         except OSError as exc:
             logging.warning("Unable to save theme preference: %s", exc)
+
+    @staticmethod
+    def _walk_widgets(parent):
+        """Yield descendants safely; never alter callbacks or device operations."""
+        for child in parent.winfo_children():
+            yield child
+            yield from PayloadDumperApp._walk_widgets(child)
 
     def _open_theme_picker(self):
         t = self.theme_tokens
@@ -235,8 +341,9 @@ class PayloadDumperApp(TkinterDnD.Tk):
         panel.pack(fill="both", expand=True, padx=12, pady=12)
         tk.Label(panel, text="APPEARANCE", bg=t["panel"], fg=t["text"], font=(self._ui_font, 13, "bold")).pack(anchor="w")
         tk.Label(panel, text="Changes apply immediately and persist across launches.", bg=t["panel"], fg=t["muted"]).pack(anchor="w", pady=(3, 12))
-        for name, desc in (("cyberpunk_glass", "Cyberpunk Glass — cyan / purple"), ("standard_dark", "Standard Dark — neutral slate"), ("standard_light", "Standard Light — bright surfaces"), ("oled_black", "OLED Black — pitch black")):
-            tk.Button(panel, text=("✓  " if name == self.theme_name else "    ") + name + " — " + desc,
+        for name, tokens in THEME_TOKENS.items():
+            desc = tokens["label"]
+            tk.Button(panel, text=("✓  " if name == self.theme_name else "    ") + desc,
                       command=lambda n=name, d=dialog: (self._apply_theme(n), d.destroy()),
                       anchor="w", bg=t["button"], fg=t["text"], activebackground=t["accent2"],
                       activeforeground="#ffffff", relief="flat", bd=0, padx=10, pady=9).pack(fill="x", pady=3)
@@ -613,26 +720,124 @@ class PayloadDumperApp(TkinterDnD.Tk):
         ttk.Label(h,text="Payload inspection",style="Title.TLabel").pack(anchor="w")
         ttk.Label(h,text="Inspect an OTA package, choose partitions, and extract verified output files.",
                   style="Muted.TLabel", wraplength=900).pack(anchor="w",pady=(3,0))
-        src=ttk.Frame(root,style="Panel.TFrame",padding=6); src.pack(fill="x",pady=(0,7)); ttk.Label(src,text="INPUT FILE PATH — TYPE OR PASTE THE FULL PATH",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(src,style="Panel.TFrame"); row.pack(fill="x",pady=(6,0)); self.source_entry=ttk.Entry(row,textvariable=self.source); self.source_entry.pack(side="left",fill="x",expand=True,ipady=4); self.source_entry.bind("<Return>",lambda _event:self._apply_manual_source_path()); ttk.Button(row,text="Browse…",command=self._browse_source).pack(side="left",padx=(7,0)); actions=ttk.Frame(src,style="Panel.TFrame"); actions.pack(fill="x",pady=(7,0)); ttk.Button(actions,text="Use typed path",command=self._apply_manual_source_path).pack(side="left"); ttk.Button(actions,text="Inspect partitions",command=self._inspect).pack(side="left",padx=(7,0))
-        out=ttk.Frame(root,style="Panel.TFrame",padding=6); out.pack(fill="x",pady=(0,7)); ttk.Label(out,text="OUTPUT DIRECTORY",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(out,style="Panel.TFrame"); row.pack(fill="x",pady=(5,0)); ttk.Entry(row,textvariable=self.output).pack(side="left",fill="x",expand=True,ipady=4); ttk.Button(row,text="Choose…",command=self._browse_output).pack(side="left",padx=(7,0)); ttk.Button(row,text="Open folder",command=self._open_output_directory).pack(side="left",padx=(7,0))
-        # Compact mounted-drive controls share the output panel to save vertical space for partitions.
-        drive_row=ttk.Frame(out,style="Panel.TFrame"); drive_row.pack(fill="x",pady=(5,0)); ttk.Label(drive_row,text="Mounted drive",background="#1f2937",foreground="#cbd5e1").pack(side="left",padx=(0,8)); self.storage_var=tk.StringVar(); self.storage_combo=ttk.Combobox(drive_row,textvariable=self.storage_var,state="readonly"); self.storage_combo.pack(side="left",fill="x",expand=True); ttk.Button(drive_row,text="Refresh",command=self._refresh_storage_locations).pack(side="left",padx=(7,0)); ttk.Button(drive_row,text="Browse drive",command=self._browse_selected_storage).pack(side="left",padx=(7,0)); ttk.Button(drive_row,text="Use for output",command=self._use_selected_storage).pack(side="left",padx=(7,0));
-        middle=ttk.Frame(root); middle.pack(fill="both",expand=True,pady=(0,10)); panel=ttk.Frame(middle,style="Panel.TFrame",padding=6); panel.pack(side="left",fill="both",expand=True,padx=(0,10)); ttk.Label(panel,text="PARTITIONS",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); ttk.Label(panel,text="Filter by partition name; no selection means extract all.",background="#1f2937",foreground="#cbd5e1").pack(anchor="w",pady=(2,5)); filter_row=ttk.Frame(panel,style="Panel.TFrame"); filter_row.pack(fill="x",pady=(0,5)); self.partition_filter=tk.StringVar(); self.partition_filter.trace_add("write",lambda *_:self._refresh_partition_tree()); self.partition_filter_entry=ttk.Entry(filter_row,textvariable=self.partition_filter); self.partition_filter_entry.pack(side="left",fill="x",expand=True); ttk.Button(filter_row,text="Clear",command=lambda:self.partition_filter.set("")).pack(side="left",padx=(6,0)); actions=ttk.Frame(panel,style="Panel.TFrame"); actions.pack(fill="x",pady=5); ttk.Button(actions,text="Select all",command=lambda:self._select_all(True)).pack(side="left"); ttk.Button(actions,text="Select none",command=lambda:self._select_all(False)).pack(side="left",padx=5); self.partition_summary=tk.StringVar(value="0 partitions · 0 selected · 0 B selected"); ttk.Label(actions,textvariable=self.partition_summary,background="#1f2937",foreground="#cbd5e1").pack(side="right",padx=(8,0))
-        self.tree=ttk.Treeview(panel,columns=("size",),show="tree headings",selectmode="none"); self.tree.heading("#0",text="Partition"); self.tree.heading("size",text="Size"); self.tree.column("#0",width=420,minwidth=260,stretch=True); self.tree.column("size",width=150,minwidth=130,anchor="e",stretch=False); self.tree.pack(fill="both",expand=True); self.tree.bind("<Button-1>",self._toggle)
-        side=ttk.Frame(middle,style="Panel.TFrame",padding=8,width=260); side.pack(side="right",fill="y"); side.pack_propagate(False); ttk.Label(side,text="OPTIONS",background="#1f2937",foreground="#93c5fd",font=("Sans",16,"bold")).pack(anchor="w",pady=(0,8)); ttk.Separator(side).pack(fill="x",pady=(0,10)); ttk.Checkbutton(side,text="Generate SHA-256 fingerprints",variable=self.fingerprint,style="Large.TCheckbutton").pack(anchor="w",pady=(10,8)); ttk.Label(side,text="Creates a SHA-256 checksum for each extracted partition. This is separate from the backend’s OTA verification.",background="#1f2937",foreground="#cbd5e1",justify="left",wraplength=260,font=(self._ui_font,10 if os.name == "nt" else 12)).pack(anchor="w",pady=(4,16)); self.start_button=ttk.Button(side,text="Extract payload",command=self._start,style="Large.TButton"); self.start_button.pack(fill="x",pady=(8,8),ipady=5); self.cancel_button=ttk.Button(side,text="Cancel",command=self._cancel,state="disabled",style="Danger.TButton"); self.cancel_button.pack(fill="x",ipady=5)
-        logbox=ttk.Frame(root,style="Panel.TFrame",padding=10); logbox.pack(fill="x",expand=False)
-        ttk.Label(logbox,text="ACTIVITY LOG",background="#1f2937",foreground="#93c5fd",
-                  font=(self._ui_font,10 if os.name == "nt" else 12,"bold")).pack(anchor="w")
-        log_frame=ttk.Frame(logbox,style="Panel.TFrame"); log_frame.pack(fill="x",expand=False,pady=6)
+
+        # Two-column workspace: paths, partitions and log on the left; options/actions on the right.
+        workspace = ttk.Frame(root)
+        workspace.pack(fill="both", expand=True)
+        workspace.columnconfigure(0, weight=72, minsize=0)
+        workspace.columnconfigure(1, weight=28, minsize=250)
+        workspace.rowconfigure(0, weight=1)
+
+        left = ttk.Frame(workspace)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        left.columnconfigure(0, weight=1)
+        left.rowconfigure(2, weight=1)
+
+        src=ttk.Frame(left,style="Panel.TFrame",padding=8)
+        src.grid(row=0,column=0,sticky="ew",pady=(0,8))
+        ttk.Label(src,text="INPUT FILE PATH",style="PanelHeading.TLabel").pack(anchor="w")
+        row=ttk.Frame(src,style="Panel.TFrame")
+        row.pack(fill="x",pady=(6,0))
+        self.source_entry=ttk.Entry(row,textvariable=self.source)
+        self.source_entry.pack(side="left",fill="x",expand=True,ipady=4)
+        self.source_entry.bind("<Return>",lambda _event:self._apply_manual_source_path())
+        ttk.Button(row,text="Browse…",command=self._browse_source).pack(side="left",padx=(7,0))
+        ttk.Button(row,text="Inspect partitions",command=self._inspect,
+                   style="Primary.TButton").pack(side="left",padx=(7,0))
+
+        out=ttk.Frame(left,style="Panel.TFrame",padding=8)
+        out.grid(row=1,column=0,sticky="ew",pady=(0,8))
+        ttk.Label(out,text="OUTPUT DIRECTORY",style="PanelHeading.TLabel").pack(anchor="w")
+        row=ttk.Frame(out,style="Panel.TFrame")
+        row.pack(fill="x",pady=(6,0))
+        ttk.Entry(row,textvariable=self.output).pack(side="left",fill="x",expand=True,ipady=4)
+        ttk.Button(row,text="Choose…",command=self._browse_output).pack(side="left",padx=(7,0))
+        ttk.Button(row,text="Open folder",command=self._open_output_directory).pack(side="left",padx=(7,0))
+        drive_row=ttk.Frame(out,style="Panel.TFrame")
+        drive_row.pack(fill="x",pady=(7,0))
+        ttk.Label(drive_row,text="Mounted drive",style="PanelMuted.TLabel").pack(side="left",padx=(0,8))
+        self.storage_var=tk.StringVar()
+        self.storage_combo=ttk.Combobox(drive_row,textvariable=self.storage_var,state="readonly")
+        self.storage_combo.pack(side="left",fill="x",expand=True)
+        ttk.Button(drive_row,text="Refresh",command=self._refresh_storage_locations).pack(side="left",padx=(7,0))
+        ttk.Button(drive_row,text="Use for output",command=self._use_selected_storage,
+                   style="Primary.TButton").pack(side="left",padx=(7,0))
+
+        panel = ttk.Frame(left, style="Panel.TFrame", padding=8)
+        panel.grid(row=2, column=0, sticky="nsew", pady=(0, 8))
+        panel.columnconfigure(0, weight=1)
+        panel.rowconfigure(2, weight=1)
+        ttk.Label(panel, text="PARTITIONS", style="PanelHeading.TLabel").grid(
+            row=0, column=0, sticky="w", pady=(0, 5))
+        filter_row = ttk.Frame(panel, style="Panel.TFrame")
+        filter_row.grid(row=1, column=0, sticky="ew", pady=(0, 7))
+        self.partition_filter = tk.StringVar()
+        self.partition_filter.trace_add("write", lambda *_: self._refresh_partition_tree())
+        self.partition_filter_entry = ttk.Entry(filter_row, textvariable=self.partition_filter)
+        self.partition_filter_entry.pack(side="left", fill="x", expand=True)
+        ttk.Button(filter_row, text="Clear", command=lambda: self.partition_filter.set("")).pack(side="left", padx=(6, 0))
+        ttk.Button(filter_row, text="Select all", command=lambda: self._select_all(True)).pack(side="left", padx=(6, 0))
+        ttk.Button(filter_row, text="Select none", command=lambda: self._select_all(False)).pack(side="left", padx=(6, 0))
+        self.partition_summary = tk.StringVar(value="0 partitions · 0 selected · 0 B selected")
+        ttk.Label(filter_row, textvariable=self.partition_summary, style="PanelMuted.TLabel").pack(
+            side="right", padx=(8, 0))
+        # Tkinter Treeview uses the tree column (#0) plus the declared data
+        # columns. Keep headers and row values aligned: Partition is #0 and
+        # Size is the single declared data column.
+        self.tree = ttk.Treeview(panel, columns=("size",), show="tree headings", selectmode="none")
+        self.tree.heading("#0", text="Partition", anchor="w")
+        self.tree.heading("size", text="Size", anchor="e")
+        # Let partition names use available space, with a useful initial width.
+        self.tree.column("#0", width=320, minwidth=200, stretch=True, anchor="w")
+        # Tkinter has no ResizeToContents mode; use a compact fixed-width,
+        # right-aligned size column and prevent it from taking extra space.
+        self.tree.column("size", width=100, minwidth=90, anchor="e", stretch=False)
+        self.tree.grid(row=2, column=0, sticky="nsew")
+        self.tree.bind("<Button-1>", self._toggle)
+
+        logbox=ttk.Frame(left,style="Panel.TFrame",padding=8)
+        logbox.grid(row=3,column=0,sticky="ew")
+        ttk.Label(logbox,text="ACTIVITY LOG",style="PanelHeading.TLabel").pack(anchor="w")
+        log_frame=ttk.Frame(logbox,style="Panel.TFrame")
+        log_frame.pack(fill="x",expand=False,pady=6)
         self.log=tk.Text(log_frame,bg="#0b1220",fg="#d1d5db",insertbackground="white",
-                         relief="flat",wrap="word",font=(self._mono_font,10),height=5,
+                         relief="flat",wrap="word",font=(self._mono_font,10),height=4,
                          padx=8,pady=6)
         log_scroll=ttk.Scrollbar(log_frame,orient="vertical",command=self.log.yview)
         self.log.configure(yscrollcommand=log_scroll.set)
         log_scroll.pack(side="right",fill="y")
         self.log.pack(side="left",fill="both",expand=True)
         self.log.configure(state="disabled")
-        self.progress=ttk.Progressbar(logbox,mode="indeterminate"); self.progress.pack(fill="x",pady=(2,0))
+        self.progress=ttk.Progressbar(logbox,mode="indeterminate")
+        self.progress.pack(fill="x",pady=(2,0))
+
+        side = ttk.Frame(workspace, style="Panel.TFrame", padding=12)
+        side.grid(row=0, column=1, sticky="nsew")
+        side.columnconfigure(0, weight=1)
+        ttk.Label(side, text="OPTIONS", style="PanelHeading.TLabel",
+                  font=("Sans", 16, "bold")).grid(row=0, column=0, sticky="w", pady=(0, 8))
+        ttk.Separator(side).grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        ttk.Checkbutton(side, text="Generate SHA-256 Checksum",
+                        variable=self.fingerprint, style="Large.TCheckbutton").grid(
+            row=2, column=0, sticky="w", pady=(10, 8))
+        ttk.Label(
+            side,
+            text="Creates a SHA-256 checksum for each extracted partition. This is separate from the backend’s OTA verification.",
+            style="PanelMuted.TLabel", justify="left",
+            wraplength=205, font=(self._ui_font, 10 if os.name == "nt" else 12),
+        ).grid(row=3, column=0, sticky="ew", pady=(4, 0))
+        # Consume spare height so the extraction controls remain pinned to the card bottom.
+        side.rowconfigure(4, weight=1)
+        ttk.Frame(side, style="Panel.TFrame").grid(row=4, column=0, sticky="nsew")
+        action_row = ttk.Frame(side, style="Panel.TFrame")
+        action_row.grid(row=5, column=0, sticky="ew", pady=(12, 0))
+        action_row.columnconfigure(0, weight=1)
+        self.start_button = ttk.Button(action_row, text="Extract payload", command=self._start,
+                                       style="Large.TButton")
+        self.start_button.grid(row=0, column=0, sticky="ew", pady=(0, 7), ipady=5)
+        self.cancel_button = ttk.Button(action_row, text="Cancel", command=self._cancel,
+                                         state="disabled", style="Danger.TButton")
+        self.cancel_button.grid(row=1, column=0, sticky="ew", ipady=4)
         self._apply_theme(self.theme_name)
         self._refresh_storage_locations(); self._enable_drop(self); self._enable_drop(src); self._enable_drop(self.source_entry); self._enable_drop(root); self._append("Drag payload.bin or an OTA .zip onto the window, or type/paste its full path and choose Use typed path. Inspect to select individual partitions."); self._append("Backend: payload-dumper-go (Apache-2.0). Some delta OTA operations are unsupported.")
     def _show_device_workspace(self, mode, manual=False):
@@ -1500,8 +1705,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
             if selected and not any(args[i] == "-s" for i in range(min(len(args), 3))):
                 args = ["-s", selected[1]] + args
             command = [binary] + args
-            risky = re.compile(r"(^|[;&|]\s*)(reboot|sideload|root|remount|disable-verity)\b|\\b(erase|format|flash|wipe|uninstall)\b", re.I)
-            if risky.search(text) and not messagebox.askyesno("Confirm ADB command", "This command can change device state:\n\n" + text + "\n\nContinue?", icon="warning"):
+            if is_destructive_adb(tokens) and not messagebox.askyesno("Confirm ADB command", "This command can change device state:\n\n" + text + "\n\nContinue?", icon="warning"):
                 self._append("ADB command cancelled by user.")
                 return
             self._append("Running host ADB command: " + " ".join(shlex.quote(x) for x in command))
@@ -1512,8 +1716,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         if not selected:
             return
         binary, serial = selected
-        risky = re.compile(r"(^|[;&|]\s*)(rm\s+-rf|reboot|poweroff|shutdown|mkfs\b|dd\b|format\b|wipe\b|setprop\b|pm\s+(uninstall|disable-user)|svc\s+.*disable)", re.I)
-        if risky.search(text) and not messagebox.askyesno("Confirm potentially destructive shell command", "This command may change device state or delete data:\n\n" + text + "\n\nRun it on " + serial + "?", icon="warning"):
+        if is_destructive_adb(["shell"] + tokens) and not messagebox.askyesno("Confirm potentially destructive shell command", "This command may change device state or delete data:\n\n" + text + "\n\nRun it on " + serial + "?", icon="warning"):
             self._append("Device-shell command cancelled by user.")
             return
         self._append("Running device shell command on " + serial + ": " + text)
@@ -1561,8 +1764,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
             tokens = ["-s", serial] + tokens
         command = [binary] + tokens
         rendered = " ".join(shlex.quote(x) for x in command)
-        destructive = re.compile(r"\b(flash|erase|format|delete-logical-partition|wipe|set_active|flashing\s+(unlock|lock)|-w)\b", re.I)
-        if destructive.search(" ".join(tokens)):
+        if is_destructive_fastboot(tokens):
             if not messagebox.askyesno("Confirm potentially destructive Fastboot command", "Verify the connected device, image, and partition before continuing.\n\n" + rendered + "\n\nThis operation may erase data or make the device unbootable. Continue?", icon="warning"):
                 self._append("Manual Fastboot command cancelled: " + rendered)
                 return
@@ -1789,7 +1991,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         image = Path(self.flash_image.get().strip().strip(chr(34)).strip(chr(39))).expanduser(); part = self.flash_partition.get().strip(); serial = self.fastboot_device.get().strip(); binary = self._tool_path("fastboot.exe" if os.name == "nt" else "fastboot") or self._tool_path("fastboot")
         if not binary: messagebox.showerror("Fastboot not found", "Install Android platform-tools and ensure fastboot is on PATH."); return
         if not image.is_file() or image.suffix.lower() != ".img": messagebox.showerror("Invalid image", "Choose an existing .img file."); return
-        if not re.fullmatch(r"[A-Za-z0-9_.-]+", part): messagebox.showerror("Invalid partition", "Enter a valid partition name."); return
+        if not is_valid_partition_name(part): messagebox.showerror("Invalid partition", "Enter a valid partition name beginning with a letter or number."); return
         if not serial: messagebox.showwarning("Select device", "Refresh devices and select exactly one Fastboot device."); return
         command = [binary, "-s", serial, "flash", part, str(image.resolve())]
         rendered_command = " ".join(shlex.quote(x) for x in command)
@@ -1802,24 +2004,24 @@ class PayloadDumperApp(TkinterDnD.Tk):
         """Show a compact, bounded confirmation dialog before any Fastboot flash."""
         dialog = tk.Toplevel(self)
         dialog.title("Confirm flashing")
-        dialog.configure(bg="#0F1117")
+        dialog.configure(bg=self.theme_tokens["bg"])
         dialog.transient(self)
         dialog.resizable(False, False)
         dialog.withdraw()
 
-        surface = "#161B22"
-        border = "#30363D"
-        text = "#E6EDF3"
-        muted = "#8B949E"
+        surface = self.theme_tokens["panel"]
+        border = self.theme_tokens["border"]
+        text = self.theme_tokens["text"]
+        muted = self.theme_tokens["muted"]
         mono = getattr(self, "_mono_font", "Consolas")
-        body = tk.Frame(dialog, bg="#0F1117", padx=18, pady=16)
+        body = tk.Frame(dialog, bg=self.theme_tokens["bg"], padx=18, pady=16)
         body.pack(fill="both", expand=True)
 
-        heading = tk.Frame(body, bg="#0F1117")
+        heading = tk.Frame(body, bg=self.theme_tokens["bg"])
         heading.pack(fill="x", pady=(0, 14))
-        tk.Label(heading, text="⚠  Confirm flashing", bg="#0F1117", fg=text,
+        tk.Label(heading, text="⚠  Confirm flashing", bg=self.theme_tokens["bg"], fg=text,
                  font=("Sans", 15, "bold")).pack(side="left")
-        tk.Label(heading, text="VERIFY TARGET", bg="#3B2F16", fg="#FBBF24",
+        tk.Label(heading, text="VERIFY TARGET", bg=self.theme_tokens["panel_alt"], fg=self.theme_tokens["accent"],
                  padx=8, pady=3, font=("Sans", 8, "bold")).pack(side="right")
 
         details = tk.Frame(body, bg=surface, highlightthickness=1, highlightbackground=border,
@@ -1840,7 +2042,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         tk.Label(details, text="TARGET PARTITION", bg=surface, fg=muted,
                  font=("Sans", 8, "bold"), anchor="w").grid(
                      row=1, column=0, sticky="w", padx=(0, 16), pady=5)
-        tk.Label(details, text="[" + partition + "]", bg="#3B2F16", fg="#FBBF24",
+        tk.Label(details, text="[" + partition + "]", bg=self.theme_tokens["panel_alt"], fg=self.theme_tokens["accent"],
                  padx=7, pady=3, font=(mono, 10, "bold")).grid(
                      row=1, column=1, sticky="w", pady=5)
         detail_row(2, "File name", image.name, value_font=(mono, 10, "bold"))
@@ -1848,22 +2050,22 @@ class PayloadDumperApp(TkinterDnD.Tk):
         tk.Label(details, text="FULL PATH", bg=surface, fg=muted,
                  font=("Sans", 8, "bold"), anchor="w").grid(
                      row=3, column=0, sticky="nw", padx=(0, 16), pady=5)
-        path_entry = tk.Entry(details, bg="#0D1117", fg=muted, insertbackground=text,
-                              readonlybackground="#0D1117", relief="flat",
+        path_entry = tk.Entry(details, bg=self.theme_tokens["input"], fg=muted, insertbackground=text,
+                              readonlybackground=self.theme_tokens["input"], relief="flat",
                               font=(mono, 9), state="readonly")
         path_entry.configure(state="normal")
         path_entry.insert(0, str(image))
         path_entry.configure(state="readonly")
         path_entry.grid(row=3, column=1, sticky="ew", pady=5, ipady=5)
 
-        tk.Label(body, text="COMMAND PREVIEW", bg="#0F1117", fg=muted,
+        tk.Label(body, text="COMMAND PREVIEW", bg=self.theme_tokens["bg"], fg=muted,
                  font=("Sans", 8, "bold")).pack(anchor="w", pady=(12, 5))
-        command_box = tk.Frame(body, bg="#0D1117", highlightthickness=1,
+        command_box = tk.Frame(body, bg=self.theme_tokens["console"], highlightthickness=1,
                                highlightbackground=border, padx=8, pady=7)
         command_box.pack(fill="x")
-        command_entry = tk.Entry(command_box, bg="#0D1117", fg="#93C5FD",
+        command_entry = tk.Entry(command_box, bg=self.theme_tokens["console"], fg=self.theme_tokens["accent"],
                                   insertbackground=text, relief="flat", font=(mono, 9),
-                                  state="normal", readonlybackground="#0D1117")
+                                  state="normal", readonlybackground=self.theme_tokens["input"])
         command_entry.insert(0, rendered_command)
         command_entry.configure(state="readonly")
         command_entry.grid(row=0, column=0, sticky="ew", ipady=3)
@@ -1873,17 +2075,17 @@ class PayloadDumperApp(TkinterDnD.Tk):
         command_entry.configure(xscrollcommand=command_scroll.set)
         command_box.columnconfigure(0, weight=1)
 
-        warning = tk.Frame(body, bg="#2B2113", highlightthickness=1,
-                           highlightbackground="#6B4F1D", padx=10, pady=8)
+        warning = tk.Frame(body, bg=self.theme_tokens["panel_alt"], highlightthickness=1,
+                           highlightbackground=self.theme_tokens["border"], padx=10, pady=8)
         warning.pack(fill="x", pady=(12, 0))
-        tk.Label(warning, text="⚠", bg="#2B2113", fg="#FBBF24",
+        tk.Label(warning, text="⚠", bg=self.theme_tokens["panel_alt"], fg=self.theme_tokens["accent"],
                  font=("Sans", 13, "bold")).pack(side="left", anchor="n", padx=(0, 9))
         tk.Label(warning,
                  text="An incompatible image or wrong partition can make the device unbootable. Verify the image matches this exact device and partition.",
-                 bg="#2B2113", fg="#FDE68A", font=("Sans", 9),
+                 bg=self.theme_tokens["panel_alt"], fg=self.theme_tokens["text"], font=("Sans", 9),
                  justify="left", wraplength=440).pack(side="left", fill="x", expand=True)
 
-        actions = tk.Frame(body, bg="#0F1117")
+        actions = tk.Frame(body, bg=self.theme_tokens["bg"])
         actions.pack(fill="x", pady=(14, 0))
         result = {"confirmed": False}
 
@@ -1896,11 +2098,11 @@ class PayloadDumperApp(TkinterDnD.Tk):
             dialog.destroy()
 
         tk.Button(actions, text="Cancel", command=lambda: close(False),
-                  bg="#30363D", fg=text, activebackground="#3B4552",
+                  bg=self.theme_tokens["button"], fg=text, activebackground=self.theme_tokens["panel_alt"],
                   activeforeground=text, relief="flat", padx=18, pady=7,
                   font=("Sans", 10)).pack(side="right", padx=(8, 0))
         tk.Button(actions, text="Flash Partition", command=lambda: close(True),
-                  bg="#B45309", fg="#FFFFFF", activebackground="#D97706",
+                  bg=self.theme_tokens["accent2"], fg="#FFFFFF", activebackground=self.theme_tokens["accent"],
                   activeforeground="#FFFFFF", relief="flat", padx=18, pady=7,
                   font=("Sans", 10, "bold")).pack(side="right")
 
@@ -2149,13 +2351,33 @@ class PayloadDumperApp(TkinterDnD.Tk):
             self.status.set(f"Output directory: {path}")
             self._append(f"Output directory selected: {path}")
     def _inspect(self):
-        if self.worker and self.worker.is_alive():return
-        src=self.source.get().strip()
-        if not src:messagebox.showwarning("Input required","Choose an OTA .bin or .zip file first.");return
-        self._busy(True);self.status.set("Inspecting payload…");self.worker=threading.Thread(target=self._inspect_worker,args=(src,),daemon=True);self.worker.start()
-    def _inspect_worker(self,src):
-        try:self.events.put(("parts",inspect_source(src,progress=lambda x:self.events.put(("log",x)))));self.events.put(("info_done","Inspection complete."))
-        except BackendError as e:self.events.put(("error",str(e)))
+        if self.worker and self.worker.is_alive():
+            return
+        src = self.source.get().strip()
+        if not src:
+            messagebox.showwarning("Input required", "Choose an OTA .bin or .zip file first.")
+            return
+        self.cancel_event.clear()
+        self._busy(True)
+        self.status.set("Inspecting payload…")
+        self.worker = threading.Thread(target=self._inspect_worker, args=(src,), daemon=True)
+        self.worker.start()
+
+    def _inspect_worker(self, src):
+        try:
+            parts = inspect_source(
+                src,
+                progress=lambda line: self.events.put(("log", line)),
+                cancel_event=self.cancel_event,
+            )
+            self.events.put(("parts", parts))
+            self.events.put(("info_done", "Inspection complete."))
+        except BackendError as exc:
+            kind = "cancelled" if self.cancel_event.is_set() else "error"
+            self.events.put((kind, str(exc)))
+        except Exception as exc:
+            logging.exception("Unexpected payload inspection failure")
+            self.events.put(("error", f"Unexpected inspection error: {exc}"))
     def _load_parts(self,parts):
         self.parts.clear();self.part_vars.clear()
         for part in parts:
