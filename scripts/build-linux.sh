@@ -14,7 +14,7 @@ PYI_GIO_ARGS=()
 if "$PYTHON" -c "import gi; gi.require_version('Gio', '2.0'); from gi.repository import Gio" >/dev/null 2>&1; then
   PYI_GIO_ARGS+=(--hidden-import=gi --hidden-import=gi.repository.Gio)
 fi
-"$PYTHON" -m PyInstaller --noconfirm --clean --onefile --windowed --name droidlab-gui --distpath "$WORK/pyinstaller-dist" --workpath "$WORK/pyinstaller-build" --specpath "$WORK" --paths src --hidden-import=payload_dumper --hidden-import=tkinter.ttk "${PYI_GIO_ARGS[@]}" --collect-all tkinter --collect-all tkinterdnd2 src/app.py
+"$PYTHON" -m PyInstaller --noconfirm --clean --onefile --windowed --name droidlab-gui --distpath "$WORK/pyinstaller-dist" --workpath "$WORK/pyinstaller-build" --specpath "$WORK" --paths src --hidden-import=payload_dumper --hidden-import=ui_metrics --hidden-import=tkinter.ttk "${PYI_GIO_ARGS[@]}" --collect-all tkinter --collect-all tkinterdnd2 src/app.py
 install -m 0755 "$WORK/pyinstaller-dist/droidlab-gui" "$APPDIR/usr/bin/droidlab-gui-bin"
 BACKEND_ARCH="linux_amd64"; if [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then BACKEND_ARCH="linux_arm64"; fi
 BACKEND_ARCHIVE="payload-dumper-go_${BACKEND_VERSION}_${BACKEND_ARCH}.tar.gz"
