@@ -25,10 +25,76 @@ def _windows_process_options():
 APP_NAME = "DroidLab"  # Canonical product name.
 
 THEME_TOKENS = {
-    "Cyberpunk Glass": {"bg":"#0c1017","panel":"#161c2a","border":"#35415b","text":"#f8fafc","muted":"#94a3b8","input":"#101722","accent":"#00d2ff","accent2":"#8b5cf6","button":"#263448","console":"#080d14"},
-    "Modern Dark Zinc": {"bg":"#0f1117","panel":"#181a20","border":"#343741","text":"#e4e4e7","muted":"#a1a1aa","input":"#111318","accent":"#60a5fa","accent2":"#71717a","button":"#27272a","console":"#090a0d"},
-    "OLED Black": {"bg":"#000000","panel":"#080808","border":"#292929","text":"#fafafa","muted":"#a3a3a3","input":"#050505","accent":"#e5e7eb","accent2":"#737373","button":"#171717","console":"#000000"},
+    "cyberpunk_glass": {
+        "label": "Cyberpunk Glass",
+        "bg": "#0B0F17",
+        "panel": "#131A26",
+        "panel_alt": "#1C2638",
+        "border": "#1F2C40",
+        "text": "#F8FAFC",
+        "muted": "#94A3B8",
+        "input": "#0D1420",
+        "accent": "#00D2FF",
+        "accent2": "#8B5CF6",
+        "button": "#1C2638",
+        "console": "#080C12",
+        "success": "#10B981",
+        "warning": "#F59E0B",
+        "danger": "#F87171"
+    },
+    "standard_dark": {
+        "label": "Standard Dark",
+        "bg": "#111318",
+        "panel": "#1C202A",
+        "panel_alt": "#252B38",
+        "border": "#2C3242",
+        "text": "#E2E8F0",
+        "muted": "#94A3B8",
+        "input": "#141821",
+        "accent": "#3B82F6",
+        "accent2": "#6366F1",
+        "button": "#252B38",
+        "console": "#0B0D12",
+        "success": "#10B981",
+        "warning": "#F59E0B",
+        "danger": "#F87171"
+    },
+    "standard_light": {
+        "label": "Standard Light",
+        "bg": "#F1F5F9",
+        "panel": "#FFFFFF",
+        "panel_alt": "#E2E8F0",
+        "border": "#CBD5E1",
+        "text": "#0F172A",
+        "muted": "#64748B",
+        "input": "#FFFFFF",
+        "accent": "#2563EB",
+        "accent2": "#7C3AED",
+        "button": "#E2E8F0",
+        "console": "#F8FAFC",
+        "success": "#047857",
+        "warning": "#B45309",
+        "danger": "#B91C1C"
+    },
+    "oled_black": {
+        "label": "OLED Black",
+        "bg": "#000000",
+        "panel": "#0F0F0F",
+        "panel_alt": "#171717",
+        "border": "#222222",
+        "text": "#F8FAFC",
+        "muted": "#A3A3A3",
+        "input": "#050505",
+        "accent": "#38BDF8",
+        "accent2": "#818CF8",
+        "button": "#171717",
+        "console": "#000000",
+        "success": "#34D399",
+        "warning": "#FBBF24",
+        "danger": "#F87171"
+    }
 }
+
 
 def _settings_path():
     return Path.home() / "DroidLab" / "config.json"
@@ -113,9 +179,9 @@ class PayloadDumperApp(TkinterDnD.Tk):
     def _load_theme_name(self):
         try:
             name = json.loads(_settings_path().read_text(encoding="utf-8")).get("theme")
-            return name if name in THEME_TOKENS else "Cyberpunk Glass"
+            return name if name in THEME_TOKENS else "cyberpunk_glass"
         except (OSError, ValueError, AttributeError):
-            return "Cyberpunk Glass"
+            return "cyberpunk_glass"
 
     def _apply_theme(self, name):
         if name not in THEME_TOKENS:
@@ -169,7 +235,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         panel.pack(fill="both", expand=True, padx=12, pady=12)
         tk.Label(panel, text="APPEARANCE", bg=t["panel"], fg=t["text"], font=(self._ui_font, 13, "bold")).pack(anchor="w")
         tk.Label(panel, text="Changes apply immediately and persist across launches.", bg=t["panel"], fg=t["muted"]).pack(anchor="w", pady=(3, 12))
-        for name, desc in (("Cyberpunk Glass", "Cyan / purple neon"), ("Modern Dark Zinc", "Minimal neutral dark"), ("OLED Black", "Pitch-black surfaces")):
+        for name, desc in (("cyberpunk_glass", "Cyberpunk Glass — cyan / purple"), ("standard_dark", "Standard Dark — neutral slate"), ("standard_light", "Standard Light — bright surfaces"), ("oled_black", "OLED Black — pitch black")):
             tk.Button(panel, text=("✓  " if name == self.theme_name else "    ") + name + " — " + desc,
                       command=lambda n=name, d=dialog: (self._apply_theme(n), d.destroy()),
                       anchor="w", bg=t["button"], fg=t["text"], activebackground=t["accent2"],
