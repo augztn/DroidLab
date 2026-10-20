@@ -32,6 +32,20 @@ class ProcessRunnerTests(unittest.TestCase):
                 cancel_event=cancelled,
             )
 
+    def test_cancellation_terminates_quiet_process(self):
+        cancelled = threading.Event()
+        timer = threading.Timer(0.2, cancelled.set)
+        timer.start()
+        try:
+            with self.assertRaises(ProcessCancelledError):
+                run_streaming(
+                    [sys.executable, "-c", "import time; time.sleep(10)"],
+                    timeout=5,
+                    cancel_event=cancelled,
+                )
+        finally:
+            timer.cancel()
+
     def test_retained_output_is_bounded(self):
         result = run_streaming(
             [sys.executable, "-c", "print('x' * 2000)"],
