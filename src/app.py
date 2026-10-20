@@ -748,10 +748,16 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.partition_summary = tk.StringVar(value="0 partitions · 0 selected · 0 B selected")
         ttk.Label(filter_row, textvariable=self.partition_summary, style="PanelMuted.TLabel").pack(
             side="right", padx=(8, 0))
+        # Tkinter Treeview uses the tree column (#0) plus the declared data
+        # columns. Keep headers and row values aligned: Partition is #0 and
+        # Size is the single declared data column.
         self.tree = ttk.Treeview(panel, columns=("size",), show="tree headings", selectmode="none")
-        self.tree.heading("#0", text="Partition")
-        self.tree.heading("size", text="Size")
-        self.tree.column("#0", width=240, minwidth=200, stretch=True)
+        self.tree.heading("#0", text="Partition", anchor="w")
+        self.tree.heading("size", text="Size", anchor="e")
+        # Let partition names use available space, with a useful initial width.
+        self.tree.column("#0", width=320, minwidth=200, stretch=True, anchor="w")
+        # Tkinter has no ResizeToContents mode; use a compact fixed-width,
+        # right-aligned size column and prevent it from taking extra space.
         self.tree.column("size", width=100, minwidth=90, anchor="e", stretch=False)
         self.tree.grid(row=2, column=0, sticky="nsew")
         self.tree.bind("<Button-1>", self._toggle)
