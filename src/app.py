@@ -1902,11 +1902,27 @@ class PayloadDumperApp(TkinterDnD.Tk):
         ttk.Button(buttons, text="Save visible log…", command=self._save_visible_adb_logcat).pack(side="left", padx=6)
         ttk.Button(buttons, text="Stop logcat", command=self._stop_adb_logcat).pack(side="right")
         process = self.adb_log_process
+        # Keep logcat separate from the app-wide event queue: a noisy device
+        # must not grow memory without bound or starve operation-result events.
+        self.adb_log_queue = queue.Queue(maxsize=2000)
+        self.adb_log_dropped = 0
         def reader():
             try:
                 if process.stdout:
                     for line in process.stdout:
-                        self.events.put(("adb_log_line", line.rstrip("\r\n")))
+                        item = line.rstrip("\r\n")
+                        try:
+                            self.adb_log_queue.put_nowait(item)
+                        except queue.Full:
+                            try:
+                                self.adb_log_queue.get_nowait()
+                            except queue.Empty:
+                                pass
+                            self.adb_log_dropped += 1
+                            try:
+                                self.adb_log_queue.put_nowait(item)
+                            except queue.Full:
+                                self.adb_log_dropped += 1
             except (OSError, ValueError):
                 logging.exception("Error reading live logcat output")
             finally:
@@ -2493,15 +2509,27 @@ class PayloadDumperApp(TkinterDnD.Tk):
     def _cancel(self):self.cancel_event.set();self.status.set("Cancelling…");self._append("Cancellation requested.")
     def _poll_events(self):
         logcat_changed = False
+        log_queue = getattr(self, "adb_log_queue", None)
+        if log_queue is not None and self.adb_log_text and self.adb_log_window and self.adb_log_window.winfo_exists():
+            # Bound UI work per tick so high-volume logcat cannot freeze the Tk loop.
+            for _ in range(300):
+                try:
+                    line = log_queue.get_nowait()
+                except queue.Empty:
+                    break
+                self.adb_log_lines.append(line)
+                logcat_changed = True
+            dropped = getattr(self, "adb_log_dropped", 0)
+            if dropped:
+                self.adb_log_lines.append("[DroidLab] %s logcat lines dropped because the display queue was full." % dropped)
+                self.adb_log_dropped = 0
+                logcat_changed = True
+            if len(self.adb_log_lines) > 10000:
+                del self.adb_log_lines[:-10000]
         try:
             while True:
                 kind,payload=self.events.get_nowait()
                 if kind=="log":self._append(payload)
-                elif kind=="adb_log_line":
-                    if self.adb_log_text and self.adb_log_window and self.adb_log_window.winfo_exists():
-                        self.adb_log_lines.append(payload)
-                        if len(self.adb_log_lines)>10000: del self.adb_log_lines[:len(self.adb_log_lines)-10000]
-                        logcat_changed = True
                 elif kind=="console_line":
                     kind_name, line = payload
                     target = self.fastboot_console if kind_name.startswith("fastboot") else self.adb_console
