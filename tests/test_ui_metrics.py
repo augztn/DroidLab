@@ -32,8 +32,8 @@ class ColumnWidthTests(unittest.TestCase):
 
 class AppUsesFontDerivedSizesTests(unittest.TestCase):
     def test_no_hard_coded_treeview_row_height(self):
-        self.assertEqual(re.findall(r"rowheight\\s*=\\s*\\d+", APP_SOURCE), [])
-        self.assertEqual(re.findall(r"rowheight\\s*=\\s*\\d+\\s*if\\b", APP_SOURCE), [])
+        self.assertEqual(re.findall(r"rowheight\s*=\s*\d+", APP_SOURCE), [])
+        self.assertEqual(re.findall(r"rowheight\s*=\s*\d+\s*if\b", APP_SOURCE), [])
 
     def test_row_height_is_derived_from_font_metrics(self):
         self.assertIn("tree_row_height(", APP_SOURCE)
