@@ -1729,10 +1729,10 @@ class PayloadDumperApp(TkinterDnD.Tk):
             target_label = selected[1] if selected else "no device (discovery/help command)"
             if not messagebox.askyesno(
                 "Confirm advanced ADB command",
-                "Advanced ADB commands are unrestricted and cannot be proven safe.\\n\\n"
-                + "Executable: " + binary + "\\nTarget: " + target_label + "\\nArguments: "
+                "Advanced ADB commands are unrestricted and cannot be proven safe.\n\n"
+                + "Executable: " + binary + "\nTarget: " + target_label + "\nArguments: "
                 + " ".join(shlex.quote(x) for x in args)
-                + "\\n\\nCommands may irreversibly modify device data. Continue?",
+                + "\n\nCommands may irreversibly modify device data. Continue?",
                 icon="warning",
             ):
                 self._append("ADB command cancelled by user.")
@@ -1747,10 +1747,10 @@ class PayloadDumperApp(TkinterDnD.Tk):
         binary, serial = selected
         if not messagebox.askyesno(
             "Confirm advanced device-shell command",
-            "Device-shell commands are unrestricted and cannot be proven safe.\\n\\n"
-            + "Executable: " + binary + "\\nTarget: " + serial + "\\nArguments: "
+            "Device-shell commands are unrestricted and cannot be proven safe.\n\n"
+            + "Executable: " + binary + "\nTarget: " + serial + "\nArguments: "
             + " ".join(shlex.quote(x) for x in tokens)
-            + "\\n\\nThis command may irreversibly modify device data. Continue?",
+            + "\n\nThis command may irreversibly modify device data. Continue?",
             icon="warning",
         ):
             self._append("Device-shell command cancelled by user.")
@@ -1812,10 +1812,10 @@ class PayloadDumperApp(TkinterDnD.Tk):
         rendered = " ".join(shlex.quote(x) for x in command)
         if not messagebox.askyesno(
             "Confirm advanced Fastboot command",
-            "Advanced Fastboot commands are unrestricted and cannot be proven safe.\\n\\n"
-            + "Executable: " + binary + "\\nTarget: " + (serial or "no device (discovery/help command)")
-            + "\\nArguments: " + " ".join(shlex.quote(x) for x in tokens)
-            + "\\n\\nCommands may erase data or make the device unbootable. Continue?",
+            "Advanced Fastboot commands are unrestricted and cannot be proven safe.\n\n"
+            + "Executable: " + binary + "\nTarget: " + (serial or "no device (discovery/help command)")
+            + "\nArguments: " + " ".join(shlex.quote(x) for x in tokens)
+            + "\n\nCommands may erase data or make the device unbootable. Continue?",
             icon="warning",
         ):
             self._append("Manual Fastboot command cancelled: " + rendered)
