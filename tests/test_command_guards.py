@@ -66,3 +66,18 @@ class DeviceSelectorTests(unittest.TestCase):
     def test_shell_arguments_are_not_host_selectors(self):
         from src.command_guards import explicit_device_selector
         self.assertIsNone(explicit_device_selector(["shell", "echo", "-s", "not-a-host-selector"], "adb"))
+
+class FastbootTargetValidationTests(unittest.TestCase):
+    def test_target_must_be_present_in_successful_fresh_scan(self):
+        from src.command_guards import is_fastboot_target_connected
+        output = "SERIAL-1 fastboot product:device\nSERIAL-2 fastboot product:other\n"
+        self.assertTrue(is_fastboot_target_connected("SERIAL-1", output, 0))
+        self.assertFalse(is_fastboot_target_connected("MISSING", output, 0))
+        self.assertFalse(is_fastboot_target_connected("SERIAL-1", output, 1))
+
+    def test_other_transport_and_malformed_lines_are_ignored(self):
+        from src.command_guards import is_fastboot_target_connected
+        output = "SERIAL-1\nSERIAL-2 adb product:device\n"
+        self.assertFalse(is_fastboot_target_connected("SERIAL-1", output, 0))
+        self.assertFalse(is_fastboot_target_connected("SERIAL-2", output, 0))
+
