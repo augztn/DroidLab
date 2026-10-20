@@ -1734,7 +1734,10 @@ class PayloadDumperApp(TkinterDnD.Tk):
             while not stream_closed:
                 if time.monotonic() >= deadline and process.poll() is None:
                     process.kill()
-                    process.wait()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        logging.error("Command process did not exit promptly after kill: %s", rendered)
                     raise subprocess.TimeoutExpired(command, timeout)
                 try:
                     line = lines.get(timeout=min(0.15, max(0.01, deadline - time.monotonic())))
