@@ -748,8 +748,8 @@ class PayloadDumperApp(TkinterDnD.Tk):
                   font=("Sans", 16, "bold")).pack(anchor="w", pady=(0, 8))
         ttk.Separator(side).pack(fill="x", pady=(0, 10))
         ttk.Checkbutton(side, text="Generate SHA-256 Checksum",
-                        variable=self.fingerprint, style="Large.TCheckbutton",
-                        wraplength=205).pack(anchor="w", fill="x", pady=(10, 8))
+                        variable=self.fingerprint, style="Large.TCheckbutton").pack(
+            anchor="w", fill="x", pady=(10, 8))
         ttk.Label(
             side,
             text="Creates a SHA-256 checksum for each extracted partition. This is separate from the backend’s OTA verification.",
