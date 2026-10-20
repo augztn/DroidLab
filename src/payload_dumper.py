@@ -10,6 +10,7 @@ import tempfile
 import threading
 from pathlib import Path
 from typing import Callable
+from process_runner import ProcessCancelledError, run_streaming, terminate_process
 
 Progress = Callable[[str], None]
 
@@ -51,27 +52,8 @@ def _find_cli() -> list[str] | None:
 
 
 def _terminate_process(proc: subprocess.Popen, grace_seconds: float = 5.0) -> None:
-    """Attempt bounded graceful termination, then bounded forced termination."""
-    if proc.poll() is not None:
-        return
-    try:
-        proc.terminate()
-    except OSError:
-        pass
-    try:
-        proc.wait(timeout=grace_seconds)
-        return
-    except subprocess.TimeoutExpired:
-        pass
-    try:
-        proc.kill()
-    except OSError:
-        pass
-    try:
-        proc.wait(timeout=grace_seconds)
-    except subprocess.TimeoutExpired:
-        # The OS may be unable to reap a process promptly; never block forever.
-        pass
+    """Compatibility wrapper around the shared bounded termination helper."""
+    terminate_process(proc, grace_seconds)
 
 
 def _run_process(
@@ -81,77 +63,19 @@ def _run_process(
     cancel_event=None,
     operation: str = "Payload operation",
 ) -> subprocess.CompletedProcess[str]:
-    """Stream backend output and share one cancellation path for inspect/extract."""
+    """Run the backend through the shared bounded streaming runner."""
     command = cli + args
-    if cancel_event is not None and cancel_event.is_set():
-        raise BackendError(f"{operation} cancelled by user.")
     try:
-        proc = subprocess.Popen(
+        return run_streaming(
             command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            bufsize=1,
+            cancel_event=cancel_event,
+            on_line=(lambda line: progress(line.rstrip())) if progress else None,
+            popen_kwargs={},
         )
+    except ProcessCancelledError as exc:
+        raise BackendError(f"{operation} cancelled by user.") from exc
     except OSError as exc:
         raise BackendError(f"Could not start payload-dumper-go: {exc}") from exc
-
-    assert proc.stdout is not None
-    finished = threading.Event()
-    cancellation_requested = threading.Event()
-
-    def watch_cancel():
-        """Terminate a quiet backend even while the reader is waiting for output."""
-        while not finished.wait(0.1):
-            if cancel_event is None or not cancel_event.is_set():
-                continue
-            cancellation_requested.set()
-            if proc.poll() is not None:
-                return
-            _terminate_process(proc)
-            return
-
-    watcher = None
-    if cancel_event is not None:
-        watcher = threading.Thread(target=watch_cancel, daemon=True)
-        watcher.start()
-
-    lines = []
-    retained_chars = 0
-    max_retained_chars = 2 * 1024 * 1024
-    dropped_lines = 0
-    try:
-        for line in proc.stdout:
-            line = line.rstrip()
-            if progress:
-                progress(line)
-            # Continue draining every line, but retain only bounded diagnostics.
-            if retained_chars + len(line) + 1 <= max_retained_chars:
-                lines.append(line)
-                retained_chars += len(line) + 1
-            else:
-                dropped_lines += 1
-        code = proc.wait()
-    except BaseException:
-        _terminate_process(proc)
-        raise
-    finally:
-        finished.set()
-        _terminate_process(proc)
-        try:
-            proc.stdout.close()
-        except (OSError, ValueError):
-            pass
-        if watcher is not None:
-            watcher.join(timeout=5.0)
-
-    if cancellation_requested.is_set() or (cancel_event is not None and cancel_event.is_set()):
-        raise BackendError(f"{operation} cancelled by user.")
-    if dropped_lines:
-        lines.append(f"[DroidLab: {dropped_lines} additional output lines omitted from retained diagnostics]")
-    return subprocess.CompletedProcess(command, code, "\n".join(lines), "")
 
 
 def _run(
