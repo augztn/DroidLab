@@ -49,6 +49,31 @@ def _find_cli() -> list[str] | None:
     return None
 
 
+
+def _terminate_process(proc: subprocess.Popen, grace_seconds: float = 5.0) -> None:
+    """Attempt bounded graceful termination, then bounded forced termination."""
+    if proc.poll() is not None:
+        return
+    try:
+        proc.terminate()
+    except OSError:
+        pass
+    try:
+        proc.wait(timeout=grace_seconds)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    try:
+        proc.kill()
+    except OSError:
+        pass
+    try:
+        proc.wait(timeout=grace_seconds)
+    except subprocess.TimeoutExpired:
+        # The OS may be unable to reap a process promptly; never block forever.
+        pass
+
+
 def _run_process(
     cli: list[str],
     args: list[str],
@@ -85,15 +110,7 @@ def _run_process(
             cancellation_requested.set()
             if proc.poll() is not None:
                 return
-            try:
-                proc.terminate()
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
-            except OSError:
-                # It may have exited between poll() and terminate().
-                pass
+            _terminate_process(proc)
             return
 
     watcher = None
@@ -118,29 +135,17 @@ def _run_process(
                 dropped_lines += 1
         code = proc.wait()
     except BaseException:
-        if proc.poll() is None:
-            try:
-                proc.terminate()
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
-            except OSError:
-                pass
+        _terminate_process(proc)
         raise
     finally:
         finished.set()
-        if proc.poll() is None:
-            try:
-                proc.terminate()
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
-            except OSError:
-                pass
+        _terminate_process(proc)
+        try:
+            proc.stdout.close()
+        except (OSError, ValueError):
+            pass
         if watcher is not None:
-            watcher.join(timeout=0.2)
+            watcher.join(timeout=5.0)
 
     if cancellation_requested.is_set() or (cancel_event is not None and cancel_event.is_set()):
         raise BackendError(f"{operation} cancelled by user.")
