@@ -2019,7 +2019,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
 
         heading = tk.Frame(body, bg=self.theme_tokens["bg"])
         heading.pack(fill="x", pady=(0, 14))
-        tk.Label(heading, text="⚠  Confirm flashing", bg="#0F1117", fg=text,
+        tk.Label(heading, text="⚠  Confirm flashing", bg=self.theme_tokens["bg"], fg=text,
                  font=("Sans", 15, "bold")).pack(side="left")
         tk.Label(heading, text="VERIFY TARGET", bg=self.theme_tokens["panel_alt"], fg=self.theme_tokens["accent"],
                  padx=8, pady=3, font=("Sans", 8, "bold")).pack(side="right")
@@ -2058,14 +2058,14 @@ class PayloadDumperApp(TkinterDnD.Tk):
         path_entry.configure(state="readonly")
         path_entry.grid(row=3, column=1, sticky="ew", pady=5, ipady=5)
 
-        tk.Label(body, text="COMMAND PREVIEW", bg="#0F1117", fg=muted,
+        tk.Label(body, text="COMMAND PREVIEW", bg=self.theme_tokens["bg"], fg=muted,
                  font=("Sans", 8, "bold")).pack(anchor="w", pady=(12, 5))
         command_box = tk.Frame(body, bg=self.theme_tokens["console"], highlightthickness=1,
                                highlightbackground=border, padx=8, pady=7)
         command_box.pack(fill="x")
         command_entry = tk.Entry(command_box, bg=self.theme_tokens["console"], fg=self.theme_tokens["accent"],
                                   insertbackground=text, relief="flat", font=(mono, 9),
-                                  state="normal", readonlybackground="#0D1117")
+                                  state="normal", readonlybackground=self.theme_tokens["input"])
         command_entry.insert(0, rendered_command)
         command_entry.configure(state="readonly")
         command_entry.grid(row=0, column=0, sticky="ew", ipady=3)
@@ -2085,7 +2085,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
                  bg=self.theme_tokens["panel_alt"], fg=self.theme_tokens["text"], font=("Sans", 9),
                  justify="left", wraplength=440).pack(side="left", fill="x", expand=True)
 
-        actions = tk.Frame(body, bg="#0F1117")
+        actions = tk.Frame(body, bg=self.theme_tokens["bg"])
         actions.pack(fill="x", pady=(14, 0))
         result = {"confirmed": False}
 
