@@ -26,72 +26,72 @@ APP_NAME = "DroidLab"  # Canonical product name.
 
 THEME_TOKENS = {
     "cyberpunk_glass": {
-        "label": "Cyberpunk Glass",
-        "bg": "#0B0F17",
-        "panel": "#131A26",
-        "panel_alt": "#1C2638",
-        "border": "#1F2C40",
-        "text": "#F8FAFC",
-        "muted": "#94A3B8",
-        "input": "#0D1420",
-        "accent": "#00D2FF",
-        "accent2": "#8B5CF6",
-        "button": "#1C2638",
-        "console": "#080C12",
-        "success": "#10B981",
-        "warning": "#F59E0B",
-        "danger": "#F87171"
+        "label": "Cyberpunk Neon",
+        "bg": "#0d1117",
+        "panel": "#161f30",
+        "panel_alt": "#1c2940",
+        "border": "#24415b",
+        "text": "#f8fafc",
+        "muted": "#94a3b8",
+        "input": "#0b1422",
+        "accent": "#00d2ff",
+        "accent2": "#8b5cf6",
+        "button": "#1c2940",
+        "console": "#080c12",
+        "success": "#10b981",
+        "warning": "#f59e0b",
+        "danger": "#f87171"
     },
     "standard_dark": {
         "label": "Standard Dark",
-        "bg": "#111318",
-        "panel": "#1C202A",
-        "panel_alt": "#252B38",
-        "border": "#2C3242",
-        "text": "#E2E8F0",
-        "muted": "#94A3B8",
-        "input": "#141821",
-        "accent": "#3B82F6",
-        "accent2": "#6366F1",
-        "button": "#252B38",
-        "console": "#0B0D12",
-        "success": "#10B981",
-        "warning": "#F59E0B",
-        "danger": "#F87171"
+        "bg": "#121214",
+        "panel": "#1c1c20",
+        "panel_alt": "#25252c",
+        "border": "#2e2e36",
+        "text": "#e4e4e7",
+        "muted": "#a1a1aa",
+        "input": "#141418",
+        "accent": "#3b82f6",
+        "accent2": "#6366f1",
+        "button": "#25252c",
+        "console": "#09090b",
+        "success": "#10b981",
+        "warning": "#f59e0b",
+        "danger": "#f87171"
     },
     "standard_light": {
         "label": "Standard Light",
-        "bg": "#F1F5F9",
-        "panel": "#FFFFFF",
-        "panel_alt": "#E2E8F0",
-        "border": "#CBD5E1",
-        "text": "#0F172A",
-        "muted": "#64748B",
-        "input": "#FFFFFF",
-        "accent": "#2563EB",
-        "accent2": "#7C3AED",
-        "button": "#E2E8F0",
-        "console": "#F8FAFC",
+        "bg": "#f1f5f9",
+        "panel": "#ffffff",
+        "panel_alt": "#e2e8f0",
+        "border": "#cbd5e1",
+        "text": "#0f172a",
+        "muted": "#64748b",
+        "input": "#ffffff",
+        "accent": "#2563eb",
+        "accent2": "#7c3aed",
+        "button": "#e2e8f0",
+        "console": "#f8fafc",
         "success": "#047857",
-        "warning": "#B45309",
-        "danger": "#B91C1C"
+        "warning": "#b45309",
+        "danger": "#b91c1c"
     },
     "oled_black": {
         "label": "OLED Black",
         "bg": "#000000",
-        "panel": "#0F0F0F",
-        "panel_alt": "#171717",
+        "panel": "#0a0a0a",
+        "panel_alt": "#151515",
         "border": "#222222",
-        "text": "#F8FAFC",
-        "muted": "#A3A3A3",
+        "text": "#fafafa",
+        "muted": "#a3a3a3",
         "input": "#050505",
-        "accent": "#38BDF8",
-        "accent2": "#818CF8",
+        "accent": "#e5e7eb",
+        "accent2": "#a1a1aa",
         "button": "#171717",
         "console": "#000000",
-        "success": "#34D399",
-        "warning": "#FBBF24",
-        "danger": "#F87171"
+        "success": "#34d399",
+        "warning": "#fbbf24",
+        "danger": "#f87171"
     }
 }
 
@@ -184,36 +184,117 @@ class PayloadDumperApp(TkinterDnD.Tk):
             return "cyberpunk_glass"
 
     def _apply_theme(self, name):
+        """Apply a palette live; intentionally does not touch device/backend logic."""
         if name not in THEME_TOKENS:
             return
+        old_tokens = getattr(self, "theme_tokens", THEME_TOKENS[name])
         self.theme_name = name
         self.theme_tokens = t = THEME_TOKENS[name]
         self.configure(bg=t["bg"])
         style = ttk.Style(self)
+        try:
+            if "clam" in style.theme_names():
+                style.theme_use("clam")
+        except tk.TclError:
+            pass
+        style.configure(".", background=t["bg"], foreground=t["text"])
         style.configure("TFrame", background=t["bg"])
-        style.configure("Panel.TFrame", background=t["panel"], bordercolor=t["border"])
+        style.configure("Panel.TFrame", background=t["panel"], bordercolor=t["border"], relief="flat")
         style.configure("TLabel", background=t["bg"], foreground=t["text"])
         style.configure("Title.TLabel", background=t["bg"], foreground=t["text"])
         style.configure("Muted.TLabel", background=t["bg"], foreground=t["muted"])
-        style.configure("TButton", background=t["button"], foreground=t["text"], padding=(9, 5), relief="flat")
-        style.map("TButton", background=[("active", t["border"]), ("pressed", t["accent2"])],
-                  foreground=[("disabled", t["muted"]), ("active", t["text"])])
-        style.configure("Primary.TButton", background=t["accent2"], foreground="#ffffff", padding=(10, 5))
+        style.configure("TButton", background=t["button"], foreground=t["text"],
+                        padding=(12, 7), bordercolor=t["border"], relief="flat")
+        style.map("TButton", background=[("pressed", t["accent2"]), ("active", t["panel_alt"])],
+                  foreground=[("disabled", t["muted"]), ("active", t["text"])],
+                  bordercolor=[("focus", t["accent"])])
+        style.configure("Primary.TButton", background=t["accent2"], foreground="#ffffff",
+                        padding=(14, 7), bordercolor=t["accent"])
         style.map("Primary.TButton", background=[("active", t["accent"])])
-        style.configure("TEntry", fieldbackground=t["input"], foreground=t["text"], insertcolor=t["text"])
-        style.configure("TCombobox", fieldbackground=t["input"], background=t["button"], foreground=t["text"], arrowcolor=t["accent"])
-        style.configure("Treeview", background=t["input"], fieldbackground=t["input"], foreground=t["text"])
-        style.configure("Treeview.Heading", background=t["panel"], foreground=t["text"])
+        style.configure("TEntry", fieldbackground=t["input"], foreground=t["text"],
+                        insertcolor=t["text"], bordercolor=t["border"], padding=6)
+        style.configure("TCombobox", fieldbackground=t["input"], background=t["button"],
+                        foreground=t["text"], arrowcolor=t["accent"], padding=5)
+        style.map("TCombobox", fieldbackground=[("readonly", t["input"])],
+                  foreground=[("readonly", t["text"])])
+        style.configure("TCheckbutton", background=t["panel"], foreground=t["text"])
+        style.configure("TRadiobutton", background=t["panel"], foreground=t["text"])
+        style.configure("Treeview", background=t["input"], fieldbackground=t["input"],
+                        foreground=t["text"], bordercolor=t["border"], rowheight=27)
+        style.configure("Treeview.Heading", background=t["panel_alt"], foreground=t["text"])
+        style.map("Treeview", background=[("selected", t["accent2"])],
+                  foreground=[("selected", "#ffffff")])
+        style.configure("TNotebook", background=t["bg"], borderwidth=0, tabmargins=(3, 5, 3, 0))
+        style.configure("TNotebook.Tab", background=t["panel"], foreground=t["muted"],
+                        padding=(16, 9), borderwidth=0)
+        style.map("TNotebook.Tab", background=[("selected", t["panel_alt"]), ("active", t["button"])],
+                  foreground=[("selected", t["accent"]), ("active", t["text"])])
+
+        # Recolor native Tk widgets as well as ttk. Preserve semantic colors
+        # (green/red/amber status indicators) and only replace known surfaces.
+        old_surface = {
+            "#161922": t["panel"], "#161b22": t["panel"], "#1e222d": t["panel"],
+            "#1f2937": t["panel"], "#111827": t["bg"], "#0b1220": t["console"],
+            "#0d1117": t["bg"], "#2a3040": t["border"], "#30363d": t["border"],
+            "#334155": t["panel_alt"], "#263449": t["button"],
+        }
+        for widget in self._walk_widgets(self):
+            try:
+                kind = widget.winfo_class()
+                if kind in ("Frame", "Labelframe", "Toplevel"):
+                    current = str(widget.cget("bg")).lower()
+                    if current in old_surface:
+                        widget.configure(bg=old_surface[current])
+                    # Update native frame outlines without changing window flags.
+                    try: widget.configure(highlightbackground=t["border"])
+                    except tk.TclError: pass
+                elif kind == "Label":
+                    bg = str(widget.cget("bg")).lower()
+                    fg = str(widget.cget("fg")).lower()
+                    if bg in old_surface:
+                        widget.configure(bg=old_surface[bg])
+                    if fg in ("#f3f4f6", "#f8fafc", "#e6edf3", "#d1d5db", "#cbd5e1"):
+                        widget.configure(fg=t["text"])
+                    elif fg in ("#94a3b8", "#8b949e"):
+                        widget.configure(fg=t["muted"])
+                elif kind in ("Text", "Entry", "Listbox"):
+                    try: widget.configure(bg=t["console"] if widget in (getattr(self, "log", None), getattr(self, "fastboot_console", None), getattr(self, "adb_console", None)) else t["input"],
+                                           fg=t["text"], insertbackground=t["accent"])
+                    except tk.TclError: pass
+            except (tk.TclError, TypeError):
+                continue
+
         for attr in ("log", "fastboot_console", "adb_console"):
             widget = getattr(self, attr, None)
             if widget:
-                try: widget.configure(bg=t["console"], fg=t["text"], insertbackground=t["text"])
-                except tk.TclError: pass
+                try:
+                    widget.configure(bg=t["console"], fg=t["text"], insertbackground=t["accent"])
+                except tk.TclError:
+                    pass
         if hasattr(self, "header_telemetry"):
-            try: self.header_telemetry.configure(bg=t["panel"], highlightbackground=t["border"])
-            except tk.TclError: pass
+            try:
+                self.header_telemetry.configure(bg=t["panel"], highlightbackground=t["border"])
+            except tk.TclError:
+                pass
+        if hasattr(self, "header_status_label"):
+            try:
+                self.header_status_label.configure(bg=t["panel"], fg=t["text"])
+            except tk.TclError:
+                pass
         if hasattr(self, "theme_button"):
-            self.theme_button.configure(bg=t["panel"], fg=t["muted"], activebackground=t["button"])
+            try:
+                self.theme_button.configure(bg=t["panel"], fg=t["muted"],
+                                            activebackground=t["panel_alt"], activeforeground=t["accent"])
+            except tk.TclError:
+                pass
+        for slot, button in getattr(self, "header_slot_buttons", {}).items():
+            try:
+                active = getattr(self, "header_device_vars", {}).get("slot", tk.StringVar(value="")).get().lower().endswith(slot)
+                button.configure(bg=t["accent"] if active else t["button"],
+                                 fg="#07111B" if active and name == "cyberpunk_glass" else t["text"],
+                                 activebackground=t["accent2"])
+            except tk.TclError:
+                pass
         try:
             path = _settings_path()
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -223,6 +304,13 @@ class PayloadDumperApp(TkinterDnD.Tk):
             path.write_text(json.dumps(config, indent=2), encoding="utf-8")
         except OSError as exc:
             logging.warning("Unable to save theme preference: %s", exc)
+
+    @staticmethod
+    def _walk_widgets(parent):
+        """Yield descendants safely; never alter callbacks or device operations."""
+        for child in parent.winfo_children():
+            yield child
+            yield from PayloadDumperApp._walk_widgets(child)
 
     def _open_theme_picker(self):
         t = self.theme_tokens
@@ -235,7 +323,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         panel.pack(fill="both", expand=True, padx=12, pady=12)
         tk.Label(panel, text="APPEARANCE", bg=t["panel"], fg=t["text"], font=(self._ui_font, 13, "bold")).pack(anchor="w")
         tk.Label(panel, text="Changes apply immediately and persist across launches.", bg=t["panel"], fg=t["muted"]).pack(anchor="w", pady=(3, 12))
-        for name, desc in (("cyberpunk_glass", "Cyberpunk Glass — cyan / purple"), ("standard_dark", "Standard Dark — neutral slate"), ("standard_light", "Standard Light — bright surfaces"), ("oled_black", "OLED Black — pitch black")):
+        for name, desc in (("cyberpunk_glass", "Cyberpunk Neon — cyan / purple"), ("standard_dark", "Standard Dark — neutral slate"), ("standard_light", "Standard Light — bright surfaces"), ("oled_black", "OLED Black — pitch black")):
             tk.Button(panel, text=("✓  " if name == self.theme_name else "    ") + name + " — " + desc,
                       command=lambda n=name, d=dialog: (self._apply_theme(n), d.destroy()),
                       anchor="w", bg=t["button"], fg=t["text"], activebackground=t["accent2"],
