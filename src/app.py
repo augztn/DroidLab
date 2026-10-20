@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cross-platform DroidLab desktop UI for Android firmware workflows."""
 from __future__ import annotations
-import os, queue, threading, tkinter as tk, shutil, re, shlex, sys
+import os, queue, threading, tkinter as tk, shutil, re, shlex, sys, json
 import subprocess, webbrowser, logging, platform
 from logging.handlers import RotatingFileHandler
 from tkinter import filedialog, messagebox, ttk
@@ -23,6 +23,15 @@ def _windows_process_options():
 
 
 APP_NAME = "DroidLab"  # Canonical product name.
+
+THEME_TOKENS = {
+    "Cyberpunk Glass": {"bg":"#0c1017","panel":"#161c2a","border":"#35415b","text":"#f8fafc","muted":"#94a3b8","input":"#101722","accent":"#00d2ff","accent2":"#8b5cf6","button":"#263448","console":"#080d14"},
+    "Modern Dark Zinc": {"bg":"#0f1117","panel":"#181a20","border":"#343741","text":"#e4e4e7","muted":"#a1a1aa","input":"#111318","accent":"#60a5fa","accent2":"#71717a","button":"#27272a","console":"#090a0d"},
+    "OLED Black": {"bg":"#000000","panel":"#080808","border":"#292929","text":"#fafafa","muted":"#a3a3a3","input":"#050505","accent":"#e5e7eb","accent2":"#737373","button":"#171717","console":"#000000"},
+}
+
+def _settings_path():
+    return Path.home() / "DroidLab" / "config.json"
 
 def _log_directory():
     """Keep logs in a clearly visible DroidLab folder inside the user's home directory."""
@@ -82,7 +91,9 @@ class PayloadDumperApp(TkinterDnD.Tk):
         # more predictably than the oversized Linux-oriented defaults.
         self.geometry("1180x760")
         self.minsize(900, 600)
-        self.configure(bg="#0F1117")
+        self.theme_name = self._load_theme_name()
+        self.theme_tokens = THEME_TOKENS[self.theme_name]
+        self.configure(bg=self.theme_tokens["bg"])
         self._ui_font = "Segoe UI" if os.name == "nt" else "Sans"
         self._mono_font = "Consolas" if os.name == "nt" else "Monospace"
         self.events=queue.Queue(); self.worker=None; self.cancel_event=threading.Event()
@@ -99,6 +110,75 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.report_callback_exception = self._report_callback_exception
         logging.info("UI initialized")
         self.after(100,self._poll_events)
+    def _load_theme_name(self):
+        try:
+            name = json.loads(_settings_path().read_text(encoding="utf-8")).get("theme")
+            return name if name in THEME_TOKENS else "Cyberpunk Glass"
+        except (OSError, ValueError, AttributeError):
+            return "Cyberpunk Glass"
+
+    def _apply_theme(self, name):
+        if name not in THEME_TOKENS:
+            return
+        self.theme_name = name
+        self.theme_tokens = t = THEME_TOKENS[name]
+        self.configure(bg=t["bg"])
+        style = ttk.Style(self)
+        style.configure("TFrame", background=t["bg"])
+        style.configure("Panel.TFrame", background=t["panel"], bordercolor=t["border"])
+        style.configure("TLabel", background=t["bg"], foreground=t["text"])
+        style.configure("Title.TLabel", background=t["bg"], foreground=t["text"])
+        style.configure("Muted.TLabel", background=t["bg"], foreground=t["muted"])
+        style.configure("TButton", background=t["button"], foreground=t["text"], padding=(9, 5), relief="flat")
+        style.map("TButton", background=[("active", t["border"]), ("pressed", t["accent2"])],
+                  foreground=[("disabled", t["muted"]), ("active", t["text"])])
+        style.configure("Primary.TButton", background=t["accent2"], foreground="#ffffff", padding=(10, 5))
+        style.map("Primary.TButton", background=[("active", t["accent"])])
+        style.configure("TEntry", fieldbackground=t["input"], foreground=t["text"], insertcolor=t["text"])
+        style.configure("TCombobox", fieldbackground=t["input"], background=t["button"], foreground=t["text"], arrowcolor=t["accent"])
+        style.configure("Treeview", background=t["input"], fieldbackground=t["input"], foreground=t["text"])
+        style.configure("Treeview.Heading", background=t["panel"], foreground=t["text"])
+        for attr in ("log", "fastboot_console", "adb_console"):
+            widget = getattr(self, attr, None)
+            if widget:
+                try: widget.configure(bg=t["console"], fg=t["text"], insertbackground=t["text"])
+                except tk.TclError: pass
+        if hasattr(self, "header_telemetry"):
+            try: self.header_telemetry.configure(bg=t["panel"], highlightbackground=t["border"])
+            except tk.TclError: pass
+        if hasattr(self, "theme_button"):
+            self.theme_button.configure(bg=t["panel"], fg=t["muted"], activebackground=t["button"])
+        try:
+            path = _settings_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            try: config = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+            except (OSError, ValueError): config = {}
+            config["theme"] = name
+            path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+        except OSError as exc:
+            logging.warning("Unable to save theme preference: %s", exc)
+
+    def _open_theme_picker(self):
+        t = self.theme_tokens
+        dialog = tk.Toplevel(self)
+        dialog.title("DroidLab appearance")
+        dialog.transient(self)
+        dialog.configure(bg=t["bg"])
+        dialog.resizable(False, False)
+        panel = tk.Frame(dialog, bg=t["panel"], padx=18, pady=16, highlightthickness=1, highlightbackground=t["border"])
+        panel.pack(fill="both", expand=True, padx=12, pady=12)
+        tk.Label(panel, text="APPEARANCE", bg=t["panel"], fg=t["text"], font=(self._ui_font, 13, "bold")).pack(anchor="w")
+        tk.Label(panel, text="Changes apply immediately and persist across launches.", bg=t["panel"], fg=t["muted"]).pack(anchor="w", pady=(3, 12))
+        for name, desc in (("Cyberpunk Glass", "Cyan / purple neon"), ("Modern Dark Zinc", "Minimal neutral dark"), ("OLED Black", "Pitch-black surfaces")):
+            tk.Button(panel, text=("✓  " if name == self.theme_name else "    ") + name + " — " + desc,
+                      command=lambda n=name, d=dialog: (self._apply_theme(n), d.destroy()),
+                      anchor="w", bg=t["button"], fg=t["text"], activebackground=t["accent2"],
+                      activeforeground="#ffffff", relief="flat", bd=0, padx=10, pady=9).pack(fill="x", pady=3)
+        ttk.Button(panel, text="Close", command=dialog.destroy).pack(anchor="e", pady=(10, 0))
+        dialog.update_idletasks()
+        dialog.geometry(f"+{self.winfo_rootx()+80}+{self.winfo_rooty()+80}")
+        dialog.grab_set()
+
     def _report_callback_exception(self, exc_type, exc_value, exc_traceback):
         logging.error("Unhandled Tkinter callback exception", exc_info=(exc_type, exc_value, exc_traceback))
         try:
@@ -445,6 +525,10 @@ class PayloadDumperApp(TkinterDnD.Tk):
                  bg="#1E222D", fg="#F3F4F6", font=(font, 9, "bold"),
                  wraplength=0, justify="left")
         self.header_status_label.pack(side="left")
+        self.theme_button = tk.Button(app_header, text="⚙", command=self._open_theme_picker,
+            bg="#161922", fg="#94A3B8", activebackground="#263448", activeforeground="#00d2ff",
+            relief="flat", bd=0, padx=9, pady=5, cursor="hand2", font=(font, 12, "bold"))
+        self.theme_button.pack(side="right", padx=(8, 0))
 
         notebook=ttk.Notebook(self); notebook.pack(fill="both",expand=True,padx=6,pady=6)
         root=ttk.Frame(notebook,padding=8); notebook.add(root,text="Payload Extractor")
@@ -483,15 +567,20 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.log.pack(side="left",fill="both",expand=True)
         self.log.configure(state="disabled")
         self.progress=ttk.Progressbar(logbox,mode="indeterminate"); self.progress.pack(fill="x",pady=(2,0))
+        self._apply_theme(self.theme_name)
         self._refresh_storage_locations(); self._enable_drop(self); self._enable_drop(src); self._enable_drop(self.source_entry); self._enable_drop(root); self._append("Drag payload.bin or an OTA .zip onto the window, or type/paste its full path and choose Use typed path. Inspect to select individual partitions."); self._append("Backend: payload-dumper-go (Apache-2.0). Some delta OTA operations are unsupported.")
-    def _show_device_workspace(self, mode):
-        """Show only the controls appropriate for the selected device mode."""
+    def _show_device_workspace(self, mode, manual=False):
+        """Show selected workspace and synchronize the inline mode toggle."""
         mode = "fastboot" if mode == "fastboot" else "adb"
         self.device_mode.set(mode)
+        self._manual_mode_override = bool(manual)
         if mode == "fastboot":
             self.flash_workspace.tkraise()
         else:
             self.adb_workspace.tkraise()
+        if hasattr(self, "fastboot_mode_button") and hasattr(self, "adb_mode_button"):
+            self.fastboot_mode_button.configure(style="Primary.TButton" if mode == "fastboot" else "TButton")
+            self.adb_mode_button.configure(style="Primary.TButton" if mode == "adb" else "TButton")
 
     def _on_shared_device_selected(self):
         target = getattr(self, "_adb_targets", {}).get(self.adb_device.get())
@@ -523,8 +612,15 @@ class PayloadDumperApp(TkinterDnD.Tk):
         tab.rowconfigure(2, weight=0, minsize=0)
         tab.rowconfigure(3, weight=1)
 
-        ttk.Label(tab, text="Fastboot & Flashing", font=(self._ui_font, 16, "bold")).grid(
-            row=0, column=0, columnspan=2, sticky="w", pady=(0, 6))
+        modebar = ttk.Frame(tab)
+        modebar.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 6))
+        ttk.Label(modebar, text="Device mode", font=(self._ui_font, 16, "bold")).pack(side="left", padx=(0, 12))
+        self.fastboot_mode_button = ttk.Button(modebar, text="Fastboot & Flashing",
+            command=lambda: self._show_device_workspace("fastboot", manual=True), style="Primary.TButton")
+        self.fastboot_mode_button.pack(side="left", padx=(0, 5))
+        self.adb_mode_button = ttk.Button(modebar, text="ADB & Sideload",
+            command=lambda: self._show_device_workspace("adb", manual=True))
+        self.adb_mode_button.pack(side="left")
         ttk.Label(tab, text="Choose a device, then select a maintenance or flashing action.",
                   style="Muted.TLabel").grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 5))
 
@@ -746,7 +842,15 @@ class PayloadDumperApp(TkinterDnD.Tk):
         tab.columnconfigure(0, weight=1)
         tab.rowconfigure(2, weight=0, minsize=0)
         tab.rowconfigure(3, weight=1)
-        ttk.Label(tab, text="ADB & Sideload", font=(self._ui_font, 16, "bold")).grid(row=0, column=0, sticky="w", pady=(0, 4))
+        modebar = ttk.Frame(tab)
+        modebar.grid(row=0, column=0, sticky="ew", pady=(0, 4))
+        ttk.Label(modebar, text="Device mode", font=(self._ui_font, 16, "bold")).pack(side="left", padx=(0, 12))
+        self.adb_mode_button = ttk.Button(modebar, text="ADB & Sideload",
+            command=lambda: self._show_device_workspace("adb", manual=True), style="Primary.TButton")
+        self.adb_mode_button.pack(side="left", padx=(0, 5))
+        self.fastboot_mode_button = ttk.Button(modebar, text="Fastboot & Flashing",
+            command=lambda: self._show_device_workspace("fastboot", manual=True))
+        self.fastboot_mode_button.pack(side="left")
         ttk.Label(tab, text="Reboot, collect logs and diagnostics, run device shell commands, or sideload an OTA ZIP from recovery.", style="Muted.TLabel", wraplength=900).grid(row=1, column=0, sticky="w", pady=(0, 3))
         device=ttk.Frame(tab,style="Panel.TFrame",padding=6); device.grid(row=2,column=0,sticky="ew",pady=(0,6))
         ttk.Label(device,text="ADB DEVICE",background="#1f2937",foreground="#93c5fd").pack(anchor="w")
