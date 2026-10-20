@@ -1633,6 +1633,10 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.events.put(("console_line", (kind, "[DroidLab] $ " + rendered + "\n")))
         process = None
         output_lines = []
+        retained_output_chars = 0
+        max_retained_output_chars = 2 * 1024 * 1024
+        console_lines_sent = 0
+        dropped_console_lines = 0
         try:
             # Device lists can become stale between selection/confirmation and
             # execution. Revalidate a targeted Fastboot command immediately
@@ -1692,10 +1696,22 @@ class PayloadDumperApp(TkinterDnD.Tk):
                 if line is None:
                     stream_closed = True
                 else:
-                    output_lines.append(line)
-                    self.events.put(("console_line", (kind, line)))
+                    if retained_output_chars + len(line) <= max_retained_output_chars:
+                        output_lines.append(line)
+                        retained_output_chars += len(line)
+                    else:
+                        dropped_console_lines += 1
+                    if console_lines_sent < 5000:
+                        self.events.put(("console_line", (kind, line)))
+                        console_lines_sent += 1
+                    else:
+                        dropped_console_lines += 1
             code = process.wait()
             output = "".join(output_lines).strip() or "Exit status: " + str(code)
+            if dropped_console_lines:
+                summary = "[DroidLab] Output truncated: %s additional output line(s) omitted.\n" % dropped_console_lines
+                output += "\n" + summary.strip()
+                self.events.put(("console_line", (kind, summary)))
             self.events.put(("console_line", (kind, "[DroidLab] Process exited with code " + str(code) + "\n")))
             self.events.put(("adb_result", (kind, code, output)))
         except (OSError, subprocess.TimeoutExpired, ValueError, RuntimeError) as exc:
@@ -1974,7 +1990,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
                                 pass
                             self.adb_log_dropped += 1
                             try:
-                                self.adb_log_queue.put_nowait(item)
+                                log_queue.put_nowait(item)
                             except queue.Full:
                                 self.adb_log_dropped += 1
             except (OSError, ValueError):
