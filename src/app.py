@@ -1706,7 +1706,6 @@ class PayloadDumperApp(TkinterDnD.Tk):
                 args = ["-s", selected[1]] + args
             command = [binary] + args
             if is_destructive_adb(tokens) and not messagebox.askyesno("Confirm ADB command", "This command can change device state:\n\n" + text + "\n\nContinue?", icon="warning"):
-            if risky.search(text) and not messagebox.askyesno("Confirm ADB command", "This command can change device state:\n\n" + text + "\n\nContinue?", icon="warning"):
                 self._append("ADB command cancelled by user.")
                 return
             self._append("Running host ADB command: " + " ".join(shlex.quote(x) for x in command))
@@ -1718,7 +1717,6 @@ class PayloadDumperApp(TkinterDnD.Tk):
             return
         binary, serial = selected
         if is_destructive_adb(["shell"] + tokens) and not messagebox.askyesno("Confirm potentially destructive shell command", "This command may change device state or delete data:\n\n" + text + "\n\nRun it on " + serial + "?", icon="warning"):
-        if risky.search(text) and not messagebox.askyesno("Confirm potentially destructive shell command", "This command may change device state or delete data:\n\n" + text + "\n\nRun it on " + serial + "?", icon="warning"):
             self._append("Device-shell command cancelled by user.")
             return
         self._append("Running device shell command on " + serial + ": " + text)
@@ -2007,24 +2005,24 @@ class PayloadDumperApp(TkinterDnD.Tk):
         """Show a compact, bounded confirmation dialog before any Fastboot flash."""
         dialog = tk.Toplevel(self)
         dialog.title("Confirm flashing")
-        dialog.configure(bg="#0F1117")
+        dialog.configure(bg=self.theme_tokens["bg"])
         dialog.transient(self)
         dialog.resizable(False, False)
         dialog.withdraw()
 
-        surface = "#161B22"
-        border = "#30363D"
+        surface = self.theme_tokens["panel"]
+        border = self.theme_tokens["border"]
         text = "#E6EDF3"
         muted = "#8B949E"
         mono = getattr(self, "_mono_font", "Consolas")
-        body = tk.Frame(dialog, bg="#0F1117", padx=18, pady=16)
+        body = tk.Frame(dialog, bg=self.theme_tokens["bg"], padx=18, pady=16)
         body.pack(fill="both", expand=True)
 
         heading = tk.Frame(body, bg="#0F1117")
         heading.pack(fill="x", pady=(0, 14))
         tk.Label(heading, text="⚠  Confirm flashing", bg="#0F1117", fg=text,
                  font=("Sans", 15, "bold")).pack(side="left")
-        tk.Label(heading, text="VERIFY TARGET", bg="#3B2F16", fg="#FBBF24",
+        tk.Label(heading, text="VERIFY TARGET", bg=self.theme_tokens["panel_alt"], fg=self.theme_tokens["accent"],
                  padx=8, pady=3, font=("Sans", 8, "bold")).pack(side="right")
 
         details = tk.Frame(body, bg=surface, highlightthickness=1, highlightbackground=border,
