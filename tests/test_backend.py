@@ -158,7 +158,7 @@ class ExtractIsolationTests(unittest.TestCase):
             with patch("src.payload_dumper._find_cli", return_value=["payload-dumper-go"]):
                 with patch("src.payload_dumper.subprocess.Popen", side_effect=fake_popen):
                     result = extract(str(src), str(out))
-            self.assertEqual(result, [out / "boot.img"])
+            self.assertEqual(result, [out.resolve() / "boot.img"])
             self.assertEqual((out / "boot.img").read_bytes(), b"new-image")
             self.assertEqual(stale.read_bytes(), b"old")
             self.assertNotIn(stale, result)
