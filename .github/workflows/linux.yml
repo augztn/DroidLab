@@ -28,7 +28,7 @@ jobs:
         run: PYTHONPATH=. python3 -m unittest discover -s tests -v
       - name: Smoke-test frozen GUI bundle
         run: |
-          python -m PyInstaller --noconfirm --clean --onefile --windowed --name droidlab-gui --distpath /tmp/pyinstaller-dist --workpath /tmp/pyinstaller-build --specpath /tmp --paths src --hidden-import=payload_dumper --hidden-import=tkinter.ttk --collect-all tkinterdnd2 src/app.py
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name droidlab-gui --distpath /tmp/pyinstaller-dist --workpath /tmp/pyinstaller-build --specpath /tmp --paths src --hidden-import=payload_dumper --hidden-import=ui_metrics --hidden-import=tkinter.ttk --collect-all tkinterdnd2 src/app.py
           test -x /tmp/pyinstaller-dist/droidlab-gui
 
   # Build and smoke-test the AppImage on PRs too, and make non-release test builds downloadable.
