@@ -5,7 +5,7 @@ from pathlib import PurePath
 
 _ADB_DESTRUCTIVE_VERBS = {"reboot", "sideload", "root", "unroot", "remount", "disable-verity", "enable-verity", "uninstall", "erase", "format", "flash", "wipe"}
 _SHELL_DESTRUCTIVE_PATTERNS = (
-    re.compile(r"(?:^|[;&|]\s*)rm\s+(?=[^;&|]*\s-r(?:f|fr|Rf|rF)\b)", re.I),
+    re.compile(r"(?:^|[;&|]\s*)rm\s+(?:-[a-z]*r[a-z]*f\b|-[a-z]*r\s+-[a-z]*f\b|-[a-z]*f\s+-[a-z]*r\b)", re.I),
     re.compile(r"(?:^|[;&|]\s*)(?:mkfs(?:\.[\w-]+)?|dd|reboot|poweroff|shutdown|wipe|format)\b", re.I),
     re.compile(r"(?:^|[;&|]\s*)setprop\b", re.I),
     re.compile(r"(?:^|[;&|]\s*)pm\s+(?:uninstall|disable-user)\b", re.I),
