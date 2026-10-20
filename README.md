@@ -18,7 +18,7 @@ DroidLab is a desktop Android firmware toolkit for inspecting and extracting OTA
 
 ## Windows build
 
-Portable Windows `.exe` bundles are built by GitHub Actions for x64 (64-bit Intel/AMD) and ARM64. 32-bit Windows is currently unsupported because the upstream payload extraction backend does not provide a Windows 386 release and its dependencies do not compile for that target. Open the [Windows Actions](https://github.com/nightx24/DroidLab/actions/workflows/windows.yml) page, select a successful build, and download `droidlab-windows-x64` or `droidlab-windows-arm64`. Extract the ZIP and run `DroidLab.exe`.
+Portable Windows `.exe` bundles are built by GitHub Actions for x64 (64-bit Intel/AMD) and ARM64. 32-bit Windows is currently unsupported because the upstream payload extraction backend does not provide a Windows 386 release and its dependencies do not compile for that target. Open the [Windows Actions](https://github.com/augztn/DroidLab/actions/workflows/windows.yml) page, select a successful build, and download `droidlab-windows-x64` or `droidlab-windows-arm64`. Extract the ZIP and run `DroidLab.exe`.
 
 Each bundle includes `DroidLab.exe`, the matching `payload-dumper-go.exe` backend, and Google's `adb.exe`/`fastboot.exe` when compatible platform-tools binaries are available for that build. DroidLab checks its bundled `bin` folder first, then falls back to tools on `PATH`. If a bundle does not contain ADB/Fastboot, install compatible Android SDK Platform-Tools and add them to `PATH`. ARM64 requires a native Windows ARM64 runner and a matching upstream backend asset; that build may fail if either dependency is unavailable. These builds still need testing on real Windows devices before being considered stable.
 

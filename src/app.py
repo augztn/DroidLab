@@ -8,6 +8,7 @@ from tkinter import filedialog, messagebox, ttk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from pathlib import Path
 from payload_dumper import BackendError, extract, inspect_source, sha256_file
+from command_guards import is_destructive_adb, is_destructive_fastboot, is_valid_partition_name
 
 def _windows_process_options():
     """Keep ADB/Fastboot subprocesses from flashing console windows on Windows."""
@@ -218,12 +219,21 @@ class PayloadDumperApp(TkinterDnD.Tk):
 
         # Recolor native Tk widgets as well as ttk. Preserve semantic colors
         # (green/red/amber status indicators) and only replace known surfaces.
+        # Re-map legacy colors and the previous theme's token colors so repeated
+        # live theme switches continue to recolor existing native Tk widgets.
+        color_roles = ("bg", "panel", "panel_alt", "border", "text", "muted",
+                       "input", "accent", "accent2", "button", "console")
+        old_token_colors = {str(old_tokens[key]).lower(): t[key]
+                            for key in color_roles if key in old_tokens and key in t}
         old_surface = {
             "#161922": t["panel"], "#161b22": t["panel"], "#1e222d": t["panel"],
             "#1f2937": t["panel"], "#111827": t["bg"], "#0b1220": t["console"],
             "#0d1117": t["bg"], "#2a3040": t["border"], "#30363d": t["border"],
             "#334155": t["panel_alt"], "#263449": t["button"],
         }
+        old_surface.update({str(old_tokens[key]).lower(): t[key]
+                            for key in ("bg", "panel", "panel_alt", "border", "input", "console", "button")
+                            if key in old_tokens and key in t})
         for widget in self._walk_widgets(self):
             try:
                 kind = widget.winfo_class()
@@ -231,22 +241,44 @@ class PayloadDumperApp(TkinterDnD.Tk):
                     current = str(widget.cget("bg")).lower()
                     if current in old_surface:
                         widget.configure(bg=old_surface[current])
-                    # Update native frame outlines without changing window flags.
-                    try: widget.configure(highlightbackground=t["border"])
-                    except tk.TclError: pass
+                    try:
+                        widget.configure(highlightbackground=t["border"])
+                    except tk.TclError:
+                        pass
                 elif kind == "Label":
                     bg = str(widget.cget("bg")).lower()
                     fg = str(widget.cget("fg")).lower()
                     if bg in old_surface:
                         widget.configure(bg=old_surface[bg])
-                    if fg in ("#f3f4f6", "#f8fafc", "#e6edf3", "#d1d5db", "#cbd5e1"):
+                    if fg in old_token_colors:
+                        widget.configure(fg=old_token_colors[fg])
+                    elif fg in ("#f3f4f6", "#f8fafc", "#e6edf3", "#d1d5db", "#cbd5e1"):
                         widget.configure(fg=t["text"])
                     elif fg in ("#94a3b8", "#8b949e"):
                         widget.configure(fg=t["muted"])
+                elif kind == "Button":
+                    options = {}
+                    for option, mapping in (("bg", old_surface), ("activebackground", old_surface),
+                                            ("fg", old_token_colors), ("activeforeground", old_token_colors)):
+                        try:
+                            current = str(widget.cget(option)).lower()
+                            if current in mapping:
+                                options[option] = mapping[current]
+                        except tk.TclError:
+                            pass
+                    if options:
+                        widget.configure(**options)
                 elif kind in ("Text", "Entry", "Listbox"):
-                    try: widget.configure(bg=t["console"] if widget in (getattr(self, "log", None), getattr(self, "fastboot_console", None), getattr(self, "adb_console", None)) else t["input"],
-                                           fg=t["text"], insertbackground=t["accent"])
-                    except tk.TclError: pass
+                    try:
+                        widget.configure(
+                            bg=t["console"] if widget in (
+                                getattr(self, "log", None), getattr(self, "fastboot_console", None),
+                                getattr(self, "adb_console", None),
+                            ) else t["input"],
+                            fg=t["text"], insertbackground=t["accent"],
+                        )
+                    except tk.TclError:
+                        pass
             except (tk.TclError, TypeError):
                 continue
 
@@ -309,8 +341,9 @@ class PayloadDumperApp(TkinterDnD.Tk):
         panel.pack(fill="both", expand=True, padx=12, pady=12)
         tk.Label(panel, text="APPEARANCE", bg=t["panel"], fg=t["text"], font=(self._ui_font, 13, "bold")).pack(anchor="w")
         tk.Label(panel, text="Changes apply immediately and persist across launches.", bg=t["panel"], fg=t["muted"]).pack(anchor="w", pady=(3, 12))
-        for name, desc in (("cyberpunk_glass", "Cyberpunk Neon — cyan / purple"), ("standard_dark", "Standard Dark — neutral slate"), ("oled_black", "OLED Black — pitch black")):
-            tk.Button(panel, text=("✓  " if name == self.theme_name else "    ") + name + " — " + desc,
+        for name, tokens in THEME_TOKENS.items():
+            desc = tokens["label"]
+            tk.Button(panel, text=("✓  " if name == self.theme_name else "    ") + desc,
                       command=lambda n=name, d=dialog: (self._apply_theme(n), d.destroy()),
                       anchor="w", bg=t["button"], fg=t["text"], activebackground=t["accent2"],
                       activeforeground="#ffffff", relief="flat", bd=0, padx=10, pady=9).pack(fill="x", pady=3)
@@ -1672,7 +1705,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
             if selected and not any(args[i] == "-s" for i in range(min(len(args), 3))):
                 args = ["-s", selected[1]] + args
             command = [binary] + args
-            risky = re.compile(r"(^|[;&|]\s*)(reboot|sideload|root|remount|disable-verity)\b|\\b(erase|format|flash|wipe|uninstall)\b", re.I)
+            if is_destructive_adb(tokens) and not messagebox.askyesno("Confirm ADB command", "This command can change device state:\n\n" + text + "\n\nContinue?", icon="warning"):
             if risky.search(text) and not messagebox.askyesno("Confirm ADB command", "This command can change device state:\n\n" + text + "\n\nContinue?", icon="warning"):
                 self._append("ADB command cancelled by user.")
                 return
@@ -1684,7 +1717,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         if not selected:
             return
         binary, serial = selected
-        risky = re.compile(r"(^|[;&|]\s*)(rm\s+-rf|reboot|poweroff|shutdown|mkfs\b|dd\b|format\b|wipe\b|setprop\b|pm\s+(uninstall|disable-user)|svc\s+.*disable)", re.I)
+        if is_destructive_adb(["shell"] + tokens) and not messagebox.askyesno("Confirm potentially destructive shell command", "This command may change device state or delete data:\n\n" + text + "\n\nRun it on " + serial + "?", icon="warning"):
         if risky.search(text) and not messagebox.askyesno("Confirm potentially destructive shell command", "This command may change device state or delete data:\n\n" + text + "\n\nRun it on " + serial + "?", icon="warning"):
             self._append("Device-shell command cancelled by user.")
             return
@@ -1733,7 +1766,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
             tokens = ["-s", serial] + tokens
         command = [binary] + tokens
         rendered = " ".join(shlex.quote(x) for x in command)
-        destructive = re.compile(r"\b(flash|erase|format|delete-logical-partition|wipe|set_active|flashing\s+(unlock|lock)|-w)\b", re.I)
+        if is_destructive_fastboot(tokens):
         if destructive.search(" ".join(tokens)):
             if not messagebox.askyesno("Confirm potentially destructive Fastboot command", "Verify the connected device, image, and partition before continuing.\n\n" + rendered + "\n\nThis operation may erase data or make the device unbootable. Continue?", icon="warning"):
                 self._append("Manual Fastboot command cancelled: " + rendered)
@@ -1961,7 +1994,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
         image = Path(self.flash_image.get().strip().strip(chr(34)).strip(chr(39))).expanduser(); part = self.flash_partition.get().strip(); serial = self.fastboot_device.get().strip(); binary = self._tool_path("fastboot.exe" if os.name == "nt" else "fastboot") or self._tool_path("fastboot")
         if not binary: messagebox.showerror("Fastboot not found", "Install Android platform-tools and ensure fastboot is on PATH."); return
         if not image.is_file() or image.suffix.lower() != ".img": messagebox.showerror("Invalid image", "Choose an existing .img file."); return
-        if not re.fullmatch(r"[A-Za-z0-9_.-]+", part): messagebox.showerror("Invalid partition", "Enter a valid partition name."); return
+        if not is_valid_partition_name(part): messagebox.showerror("Invalid partition", "Enter a valid partition name beginning with a letter or number."); return
         if not serial: messagebox.showwarning("Select device", "Refresh devices and select exactly one Fastboot device."); return
         command = [binary, "-s", serial, "flash", part, str(image.resolve())]
         rendered_command = " ".join(shlex.quote(x) for x in command)
@@ -2321,13 +2354,33 @@ class PayloadDumperApp(TkinterDnD.Tk):
             self.status.set(f"Output directory: {path}")
             self._append(f"Output directory selected: {path}")
     def _inspect(self):
-        if self.worker and self.worker.is_alive():return
-        src=self.source.get().strip()
-        if not src:messagebox.showwarning("Input required","Choose an OTA .bin or .zip file first.");return
-        self._busy(True);self.status.set("Inspecting payload…");self.worker=threading.Thread(target=self._inspect_worker,args=(src,),daemon=True);self.worker.start()
-    def _inspect_worker(self,src):
-        try:self.events.put(("parts",inspect_source(src,progress=lambda x:self.events.put(("log",x)))));self.events.put(("info_done","Inspection complete."))
-        except BackendError as e:self.events.put(("error",str(e)))
+        if self.worker and self.worker.is_alive():
+            return
+        src = self.source.get().strip()
+        if not src:
+            messagebox.showwarning("Input required", "Choose an OTA .bin or .zip file first.")
+            return
+        self.cancel_event.clear()
+        self._busy(True)
+        self.status.set("Inspecting payload…")
+        self.worker = threading.Thread(target=self._inspect_worker, args=(src,), daemon=True)
+        self.worker.start()
+
+    def _inspect_worker(self, src):
+        try:
+            parts = inspect_source(
+                src,
+                progress=lambda line: self.events.put(("log", line)),
+                cancel_event=self.cancel_event,
+            )
+            self.events.put(("parts", parts))
+            self.events.put(("info_done", "Inspection complete."))
+        except BackendError as exc:
+            kind = "cancelled" if self.cancel_event.is_set() else "error"
+            self.events.put((kind, str(exc)))
+        except Exception as exc:
+            logging.exception("Unexpected payload inspection failure")
+            self.events.put(("error", f"Unexpected inspection error: {exc}"))
     def _load_parts(self,parts):
         self.parts.clear();self.part_vars.clear()
         for part in parts:
