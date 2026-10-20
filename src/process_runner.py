@@ -97,7 +97,7 @@ def run_streaming(
             if cancel_event is not None and cancel_event.is_set():
                 terminate_process(proc)
                 raise ProcessCancelledError("Process cancelled by user.")
-            if deadline is not None and time.monotonic() >= deadline and proc.poll() is None:
+            if deadline is not None and time.monotonic() >= deadline:
                 terminate_process(proc)
                 raise subprocess.TimeoutExpired(list(command), timeout)
             wait = 0.1
