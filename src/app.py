@@ -617,9 +617,63 @@ class PayloadDumperApp(TkinterDnD.Tk):
         out=ttk.Frame(root,style="Panel.TFrame",padding=6); out.pack(fill="x",pady=(0,7)); ttk.Label(out,text="OUTPUT DIRECTORY",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); row=ttk.Frame(out,style="Panel.TFrame"); row.pack(fill="x",pady=(5,0)); ttk.Entry(row,textvariable=self.output).pack(side="left",fill="x",expand=True,ipady=4); ttk.Button(row,text="Choose…",command=self._browse_output).pack(side="left",padx=(7,0)); ttk.Button(row,text="Open folder",command=self._open_output_directory).pack(side="left",padx=(7,0))
         # Compact mounted-drive controls share the output panel to save vertical space for partitions.
         drive_row=ttk.Frame(out,style="Panel.TFrame"); drive_row.pack(fill="x",pady=(5,0)); ttk.Label(drive_row,text="Mounted drive",background="#1f2937",foreground="#cbd5e1").pack(side="left",padx=(0,8)); self.storage_var=tk.StringVar(); self.storage_combo=ttk.Combobox(drive_row,textvariable=self.storage_var,state="readonly"); self.storage_combo.pack(side="left",fill="x",expand=True); ttk.Button(drive_row,text="Refresh",command=self._refresh_storage_locations).pack(side="left",padx=(7,0)); ttk.Button(drive_row,text="Browse drive",command=self._browse_selected_storage).pack(side="left",padx=(7,0)); ttk.Button(drive_row,text="Use for output",command=self._use_selected_storage).pack(side="left",padx=(7,0));
-        middle=ttk.Frame(root); middle.pack(fill="both",expand=True,pady=(0,10)); panel=ttk.Frame(middle,style="Panel.TFrame",padding=6); panel.pack(side="left",fill="both",expand=True,padx=(0,10)); ttk.Label(panel,text="PARTITIONS",background="#1f2937",foreground="#93c5fd").pack(anchor="w"); ttk.Label(panel,text="Filter by partition name; no selection means extract all.",background="#1f2937",foreground="#cbd5e1").pack(anchor="w",pady=(2,5)); filter_row=ttk.Frame(panel,style="Panel.TFrame"); filter_row.pack(fill="x",pady=(0,5)); self.partition_filter=tk.StringVar(); self.partition_filter.trace_add("write",lambda *_:self._refresh_partition_tree()); self.partition_filter_entry=ttk.Entry(filter_row,textvariable=self.partition_filter); self.partition_filter_entry.pack(side="left",fill="x",expand=True); ttk.Button(filter_row,text="Clear",command=lambda:self.partition_filter.set("")).pack(side="left",padx=(6,0)); actions=ttk.Frame(panel,style="Panel.TFrame"); actions.pack(fill="x",pady=5); ttk.Button(actions,text="Select all",command=lambda:self._select_all(True)).pack(side="left"); ttk.Button(actions,text="Select none",command=lambda:self._select_all(False)).pack(side="left",padx=5); self.partition_summary=tk.StringVar(value="0 partitions · 0 selected · 0 B selected"); ttk.Label(actions,textvariable=self.partition_summary,background="#1f2937",foreground="#cbd5e1").pack(side="right",padx=(8,0))
-        self.tree=ttk.Treeview(panel,columns=("size",),show="tree headings",selectmode="none"); self.tree.heading("#0",text="Partition"); self.tree.heading("size",text="Size"); self.tree.column("#0",width=420,minwidth=260,stretch=True); self.tree.column("size",width=150,minwidth=130,anchor="e",stretch=False); self.tree.pack(fill="both",expand=True); self.tree.bind("<Button-1>",self._toggle)
-        side=ttk.Frame(middle,style="Panel.TFrame",padding=8,width=260); side.pack(side="right",fill="y"); side.pack_propagate(False); ttk.Label(side,text="OPTIONS",background="#1f2937",foreground="#93c5fd",font=("Sans",16,"bold")).pack(anchor="w",pady=(0,8)); ttk.Separator(side).pack(fill="x",pady=(0,10)); ttk.Checkbutton(side,text="Generate SHA-256 fingerprints",variable=self.fingerprint,style="Large.TCheckbutton").pack(anchor="w",pady=(10,8)); ttk.Label(side,text="Creates a SHA-256 checksum for each extracted partition. This is separate from the backend’s OTA verification.",background="#1f2937",foreground="#cbd5e1",justify="left",wraplength=260,font=(self._ui_font,10 if os.name == "nt" else 12)).pack(anchor="w",pady=(4,16)); self.start_button=ttk.Button(side,text="Extract payload",command=self._start,style="Large.TButton"); self.start_button.pack(fill="x",pady=(8,8),ipady=5); self.cancel_button=ttk.Button(side,text="Cancel",command=self._cancel,state="disabled",style="Danger.TButton"); self.cancel_button.pack(fill="x",ipady=5)
+        # Give the partition list most of the space, while reserving a stable
+        # minimum width for the OPTIONS card.
+        middle = ttk.Frame(root)
+        middle.pack(fill="both", expand=True, pady=(0, 10))
+        middle.columnconfigure(0, weight=3, minsize=0)
+        middle.columnconfigure(1, weight=1, minsize=240)
+        middle.rowconfigure(0, weight=1)
+
+        panel = ttk.Frame(middle, style="Panel.TFrame", padding=6)
+        panel.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        ttk.Label(panel, text="PARTITIONS", background="#1f2937",
+                  foreground="#93c5fd").pack(anchor="w")
+        ttk.Label(panel, text="Filter by partition name; no selection means extract all.",
+                  background="#1f2937", foreground="#cbd5e1").pack(anchor="w", pady=(2, 5))
+        filter_row = ttk.Frame(panel, style="Panel.TFrame")
+        filter_row.pack(fill="x", pady=(0, 5))
+        self.partition_filter = tk.StringVar()
+        self.partition_filter.trace_add("write", lambda *_: self._refresh_partition_tree())
+        self.partition_filter_entry = ttk.Entry(filter_row, textvariable=self.partition_filter)
+        self.partition_filter_entry.pack(side="left", fill="x", expand=True)
+        ttk.Button(filter_row, text="Clear", command=lambda: self.partition_filter.set("")).pack(side="left", padx=(6, 0))
+        actions = ttk.Frame(panel, style="Panel.TFrame")
+        actions.pack(fill="x", pady=5)
+        ttk.Button(actions, text="Select all", command=lambda: self._select_all(True)).pack(side="left")
+        ttk.Button(actions, text="Select none", command=lambda: self._select_all(False)).pack(side="left", padx=5)
+        self.partition_summary = tk.StringVar(value="0 partitions · 0 selected · 0 B selected")
+        ttk.Label(actions, textvariable=self.partition_summary, background="#1f2937",
+                  foreground="#cbd5e1").pack(side="right", padx=(8, 0))
+        self.tree = ttk.Treeview(panel, columns=("size",), show="tree headings", selectmode="none")
+        self.tree.heading("#0", text="Partition")
+        self.tree.heading("size", text="Size")
+        self.tree.column("#0", width=420, minwidth=260, stretch=True)
+        self.tree.column("size", width=150, minwidth=130, anchor="e", stretch=False)
+        self.tree.pack(fill="both", expand=True)
+        self.tree.bind("<Button-1>", self._toggle)
+
+        side = ttk.Frame(middle, style="Panel.TFrame", padding=14, width=240)
+        side.grid(row=0, column=1, sticky="nsew")
+        side.grid_propagate(False)
+        ttk.Label(side, text="OPTIONS", background="#1f2937", foreground="#93c5fd",
+                  font=("Sans", 16, "bold")).pack(anchor="w", pady=(0, 8))
+        ttk.Separator(side).pack(fill="x", pady=(0, 10))
+        ttk.Checkbutton(side, text="Generate SHA-256 Checksum",
+                        variable=self.fingerprint, style="Large.TCheckbutton",
+                        wraplength=205).pack(anchor="w", fill="x", pady=(10, 8))
+        ttk.Label(
+            side,
+            text="Creates a SHA-256 checksum for each extracted partition. This is separate from the backend’s OTA verification.",
+            background="#1f2937", foreground="#cbd5e1", justify="left",
+            wraplength=205, font=(self._ui_font, 10 if os.name == "nt" else 12),
+        ).pack(anchor="w", fill="x", pady=(4, 16))
+        self.start_button = ttk.Button(side, text="Extract payload", command=self._start,
+                                        style="Large.TButton")
+        self.start_button.pack(fill="x", pady=(8, 8), ipadx=16, ipady=8)
+        self.cancel_button = ttk.Button(side, text="Cancel", command=self._cancel,
+                                         state="disabled", style="Danger.TButton")
+        self.cancel_button.pack(fill="x", ipadx=16, ipady=8)
         logbox=ttk.Frame(root,style="Panel.TFrame",padding=10); logbox.pack(fill="x",expand=False)
         ttk.Label(logbox,text="ACTIVITY LOG",background="#1f2937",foreground="#93c5fd",
                   font=(self._ui_font,10 if os.name == "nt" else 12,"bold")).pack(anchor="w")
