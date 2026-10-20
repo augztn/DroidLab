@@ -136,10 +136,7 @@ class BackendTests(unittest.TestCase):
                 self.assertIsNone(_find_cli())
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
+class ExtractIsolationTests(unittest.TestCase):
     def test_extract_uses_isolated_outputs_and_ignores_stale_images(self):
         class FakeProcess:
             stdout = io.StringIO("extracted boot\\n")
@@ -189,3 +186,7 @@ if __name__ == "__main__":
                     with self.assertRaisesRegex(BackendError, "will not be overwritten"):
                         extract(str(src), str(out))
             self.assertEqual(existing.read_bytes(), b"keep-me")
+
+
+if __name__ == "__main__":
+    unittest.main()
