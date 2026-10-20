@@ -104,7 +104,7 @@ class BackendTests(unittest.TestCase):
     def test_extract_reports_backend_exit_code(self):
         class FakeProcess:
             stdout = io.StringIO("backend started\n")
-            def wait(self):
+            def wait(self, timeout=None):
                 return 3
             def poll(self):
                 return 3
@@ -140,7 +140,7 @@ class ExtractIsolationTests(unittest.TestCase):
     def test_extract_uses_isolated_outputs_and_ignores_stale_images(self):
         class FakeProcess:
             stdout = io.StringIO("extracted boot\\n")
-            def wait(self): return 0
+            def wait(self, timeout=None): return 0
             def poll(self): return 0
 
         with tempfile.TemporaryDirectory() as temp:
@@ -166,7 +166,7 @@ class ExtractIsolationTests(unittest.TestCase):
     def test_extract_never_overwrites_existing_image(self):
         class FakeProcess:
             stdout = io.StringIO("extracted boot\\n")
-            def wait(self): return 0
+            def wait(self, timeout=None): return 0
             def poll(self): return 0
 
         with tempfile.TemporaryDirectory() as temp:
