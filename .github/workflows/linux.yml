@@ -65,14 +65,23 @@ jobs:
           appimage="$(find dist -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
           test -n "$appimage"
           chmod +x "$appimage"
+          rm -f "$HOME/DroidLab/logs/droidlab.log" /tmp/appimage-smoke.log
           set +e
-          APPIMAGE_EXTRACT_AND_RUN=1 timeout 8s xvfb-run -a "$appimage" > /tmp/appimage-smoke.log 2>&1
+          PYTHONFAULTHANDLER=1 APPIMAGE_EXTRACT_AND_RUN=1 timeout 8s xvfb-run -a "$appimage" > /tmp/appimage-smoke.log 2>&1
           status=$?
           set -e
           cat /tmp/appimage-smoke.log
-          # 124 means the GUI stayed running until the smoke-test timeout.
+          # On startup failure, print the application's own rotating log so
+          # frozen-runtime exceptions are visible in Actions instead of only
+          # showing PyInstaller's generic "unhandled exception" message.
           if [[ "$status" -ne 124 ]]; then
             echo "AppImage did not stay running (exit code $status)" >&2
+            if [[ -f "$HOME/DroidLab/logs/droidlab.log" ]]; then
+              echo "----- DroidLab application log -----" >&2
+              cat "$HOME/DroidLab/logs/droidlab.log" >&2
+            else
+              echo "DroidLab log file was not created at $HOME/DroidLab/logs/droidlab.log" >&2
+            fi
             exit 1
           fi
       - name: Upload downloadable AppImage test build
