@@ -85,8 +85,8 @@ def explicit_device_selector(tokens: list[str] | tuple[str, ...], tool: str) -> 
         takes_value |= {"-t", "-H", "-P", "-L"}
         no_value = {"-d", "-e"}
     else:
-        takes_value |= {"-i", "-p", "-c"}
-        no_value = {"-w", "-l", "--slot", "--set-active"}
+        takes_value |= {"-i", "-p", "-c", "--slot"}
+        no_value = {"-w", "-l", "--set-active"}
     while index < len(values):
         token = values[index]
         if token == "--":
