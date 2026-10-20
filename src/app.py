@@ -1660,7 +1660,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
                         raise RuntimeError(
                             "Fastboot target %r is no longer present in the fresh device scan. "
                             "Refresh devices, verify the target, and retry. Probe output: %s"
-                            % (target_serial, (probe.stdout + "\\n" + probe.stderr).strip())
+                            % (target_serial, (probe.stdout + "\n" + probe.stderr).strip())
                         )
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                        stdin=subprocess.DEVNULL, text=True, encoding="utf-8",
@@ -1722,7 +1722,7 @@ class PayloadDumperApp(TkinterDnD.Tk):
             operation_lock = self._device_operation_locks.setdefault(serial, threading.Lock())
         if not operation_lock.acquire(blocking=False):
             message = "Another DroidLab operation is already running for device %s; this command was not started." % serial
-            self.events.put(("console_line", (kind, "[DroidLab] ERROR: " + message + "\\n")))
+            self.events.put(("console_line", (kind, "[DroidLab] ERROR: " + message + "\n")))
             self.events.put(("adb_result", (kind, -1, message)))
             return
         try:
