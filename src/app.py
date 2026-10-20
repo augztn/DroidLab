@@ -149,6 +149,10 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self._ui_font = "Segoe UI" if os.name == "nt" else "Sans"
         self._mono_font = "Consolas" if os.name == "nt" else "Monospace"
         self.events=queue.Queue(); self.worker=None; self.cancel_event=threading.Event()
+        # One active device-mutating/diagnostic command per serial. This avoids
+        # overlapping operations against the same physical target.
+        self._device_operation_locks = {}
+        self._device_operation_locks_guard = threading.Lock()
         menu=tk.Menu(self)
         help_menu=tk.Menu(menu, tearoff=False)
         help_menu.add_command(label="Debug Tools / Open Logs", command=self._open_log_folder)
@@ -1706,7 +1710,25 @@ class PayloadDumperApp(TkinterDnD.Tk):
             self.events.put(("adb_result", (kind, -1, message)))
 
     def _adb_task(self, command, timeout, kind):
-        self._stream_process(command, timeout, kind)
+        serial = None
+        if "-s" in command:
+            selector_index = command.index("-s")
+            if selector_index + 1 < len(command):
+                serial = command[selector_index + 1]
+        if not serial:
+            self._stream_process(command, timeout, kind)
+            return
+        with self._device_operation_locks_guard:
+            operation_lock = self._device_operation_locks.setdefault(serial, threading.Lock())
+        if not operation_lock.acquire(blocking=False):
+            message = "Another DroidLab operation is already running for device %s; this command was not started." % serial
+            self.events.put(("console_line", (kind, "[DroidLab] ERROR: " + message + "\\n")))
+            self.events.put(("adb_result", (kind, -1, message)))
+            return
+        try:
+            self._stream_process(command, timeout, kind)
+        finally:
+            operation_lock.release()
 
     def _run_adb_shell(self):
         text = self.adb_shell_command.get().strip()
