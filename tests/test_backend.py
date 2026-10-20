@@ -138,3 +138,54 @@ class BackendTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+    def test_extract_uses_isolated_outputs_and_ignores_stale_images(self):
+        class FakeProcess:
+            stdout = io.StringIO("extracted boot\\n")
+            def wait(self): return 0
+            def poll(self): return 0
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            src = root / "payload.bin"
+            src.write_bytes(b"stub")
+            out = root / "out"
+            out.mkdir()
+            stale = out / "stale.img"
+            stale.write_bytes(b"old")
+            def fake_popen(command, **kwargs):
+                stage = Path(command[command.index("-o") + 1])
+                (stage / "boot.img").write_bytes(b"new-image")
+                return FakeProcess()
+            with patch("src.payload_dumper._find_cli", return_value=["payload-dumper-go"]):
+                with patch("src.payload_dumper.subprocess.Popen", side_effect=fake_popen):
+                    result = extract(str(src), str(out))
+            self.assertEqual(result, [out / "boot.img"])
+            self.assertEqual((out / "boot.img").read_bytes(), b"new-image")
+            self.assertEqual(stale.read_bytes(), b"old")
+            self.assertNotIn(stale, result)
+
+    def test_extract_never_overwrites_existing_image(self):
+        class FakeProcess:
+            stdout = io.StringIO("extracted boot\\n")
+            def wait(self): return 0
+            def poll(self): return 0
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            src = root / "payload.bin"
+            src.write_bytes(b"stub")
+            out = root / "out"
+            out.mkdir()
+            existing = out / "boot.img"
+            existing.write_bytes(b"keep-me")
+            def fake_popen(command, **kwargs):
+                stage = Path(command[command.index("-o") + 1])
+                (stage / "boot.img").write_bytes(b"new-image")
+                return FakeProcess()
+            with patch("src.payload_dumper._find_cli", return_value=["payload-dumper-go"]):
+                with patch("src.payload_dumper.subprocess.Popen", side_effect=fake_popen):
+                    with self.assertRaisesRegex(BackendError, "will not be overwritten"):
+                        extract(str(src), str(out))
+            self.assertEqual(existing.read_bytes(), b"keep-me")
