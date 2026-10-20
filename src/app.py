@@ -1410,23 +1410,49 @@ class PayloadDumperApp(TkinterDnD.Tk):
                         [binary, "-s", serial, "set_active", slot])
             lines = [f"[DroidLab] Request active slot {slot.upper()} on {serial}."]
             success = False
-            for index, command in enumerate(commands):
-                rendered = " ".join(shlex.quote(part) for part in command)
-                lines.append("$ " + rendered)
+            with self._device_operation_locks_guard:
+                operation_lock = self._device_operation_locks.setdefault(serial, threading.Lock())
+            if not operation_lock.acquire(blocking=False):
+                lines.append("[DroidLab] Another operation is already running for device %s." % serial)
+            else:
                 try:
-                    result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8",
-                        errors="replace", timeout=12, check=False, **_windows_process_options())
-                    output = ((result.stdout or "") + (result.stderr or "")).strip()
-                    lines.append(output or f"(no output; exit code {result.returncode})")
-                    if result.returncode == 0:
-                        success = True
-                        break
-                    if index == 0:
-                        lines.append("Primary syntax failed; trying legacy set_active syntax.")
-                except (OSError, subprocess.TimeoutExpired) as exc:
-                    lines.append("ERROR: " + str(exc))
-                    if index == 0:
-                        lines.append("Trying legacy set_active syntax.")
+                    for index, command in enumerate(commands):
+                        rendered = " ".join(shlex.quote(part) for part in command)
+                        lines.append("$ " + rendered)
+                        try:
+                            # Slot switching is a mutation too: serialize it with
+                            # other commands and confirm the target is still attached.
+                            probe = subprocess.run([binary, "devices", "-l"], capture_output=True,
+                                text=True, encoding="utf-8", errors="replace", timeout=8,
+                                check=False, **_windows_process_options())
+                            connected = {
+                                item.split()[0] for item in probe.stdout.splitlines()
+                                if len(item.split()) >= 2 and item.split()[1].lower() == "fastboot"
+                            }
+                            if probe.returncode != 0 or serial not in connected:
+                                raise RuntimeError(
+                                    "Fastboot target %r is no longer present in the fresh device scan."
+                                    % serial
+                                )
+                            result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8",
+                                errors="replace", timeout=12, check=False, **_windows_process_options())
+                            output = ((result.stdout or "") + (result.stderr or "")).strip()
+                            lines.append(output or f"(no output; exit code {result.returncode})")
+                            if result.returncode == 0:
+                                success = True
+                                break
+                            if index == 0:
+                                lines.append("Primary syntax failed; trying legacy set_active syntax.")
+                        except (OSError, subprocess.TimeoutExpired, RuntimeError) as exc:
+                            lines.append("ERROR: " + str(exc))
+                            # Do not retry a target-validation failure with another
+                            # mutating syntax. Retry only a failed Fastboot command.
+                            if index == 0 and not isinstance(exc, RuntimeError):
+                                lines.append("Trying legacy set_active syntax.")
+                            else:
+                                break
+                finally:
+                    operation_lock.release()
             lines.append("[DroidLab] Slot switch " + ("succeeded." if success else "failed."))
             def finish():
                 for line in lines:
