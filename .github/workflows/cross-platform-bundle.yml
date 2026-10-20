@@ -99,9 +99,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y python3-tk xz-utils wget file libfuse2 xvfb gir1.2-gtk-4.0 gir1.2-gtk-3.0 python3-gi
           python -m pip install --upgrade pyinstaller "tkinterdnd2>=0.4.3,<1"
-          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O /tmp/appimagetool
-          chmod +x /tmp/appimagetool
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O /tmp/appimagetool
+          echo "95cbe7cce9717fce90c484e34052ee7c7f1d7635b33c12525b4776826a7d29b6  /tmp/appimagetool" | sha256sum --check
+          wget -q https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64 -O /tmp/runtime-x86_64
+          echo "617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46  /tmp/runtime-x86_64" | sha256sum --check
+          chmod +x /tmp/appimagetool /tmp/runtime-x86_64
           sudo install /tmp/appimagetool /usr/local/bin/appimagetool
+          sudo install /tmp/runtime-x86_64 /usr/local/bin/runtime-x86_64
       - name: Compile and test
         run: |
           python3 -m compileall -q src tests
@@ -109,6 +113,7 @@ jobs:
       - name: Build AppImage
         env:
           APPIMAGE_EXTRACT_AND_RUN: "1"
+          APPIMAGE_RUNTIME_FILE: /usr/local/bin/runtime-x86_64
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then VERSION="${GITHUB_REF_NAME#v}"; else VERSION="0.1.0-ci.${GITHUB_RUN_NUMBER}"; fi
           VERSION="$VERSION" bash scripts/build-linux.sh
