@@ -1990,6 +1990,11 @@ class PayloadDumperApp(TkinterDnD.Tk):
             except (OSError, ValueError):
                 logging.exception("Error reading live logcat output")
             finally:
+                try:
+                    if process.stdout:
+                        process.stdout.close()
+                except (OSError, ValueError):
+                    pass
                 self.events.put(("adb_log_end", process.poll()))
         threading.Thread(target=reader, name="DroidLab-LogcatReader", daemon=True).start()
         window.protocol("WM_DELETE_WINDOW", self._stop_adb_logcat)
@@ -2021,12 +2026,8 @@ class PayloadDumperApp(TkinterDnD.Tk):
         process = self.adb_log_process
         self.adb_log_process = None
         if process is not None:
+            # The reader thread owns stdout and closes it after termination.
             terminate_process(process, grace_seconds=1.0)
-            try:
-                if process.stdout:
-                    process.stdout.close()
-            except (OSError, ValueError):
-                pass
         if self.adb_log_window and self.adb_log_window.winfo_exists():
             self.adb_log_window.destroy()
         self.adb_log_window = self.adb_log_text = None
@@ -2050,6 +2051,11 @@ class PayloadDumperApp(TkinterDnD.Tk):
                     self.events.put(("adb_result",("logcat_file",process.returncode,"Saved logcat to "+path+(("\n"+stderr.strip()) if stderr and stderr.strip() else ""))))
                 except subprocess.TimeoutExpired:
                     terminate_process(process, grace_seconds=2.0)
+                    try:
+                        process.communicate(timeout=1)
+                    except subprocess.TimeoutExpired:
+                        if process.stderr:
+                            process.stderr.close()
                     self.events.put(("adb_result",("logcat_file",0,"One-hour capture limit reached. Partial logcat saved to "+path)))
         except (OSError, subprocess.TimeoutExpired) as exc:
             if process is not None:
