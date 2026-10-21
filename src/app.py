@@ -8,8 +8,13 @@ from tkinter import filedialog, font as tkfont, messagebox, ttk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from pathlib import Path
 from payload_dumper import BackendError, extract, inspect_source, sha256_file
-from command_guards import is_destructive_adb, is_destructive_fastboot, is_valid_partition_name
+from command_guards import (is_destructive_adb, is_destructive_fastboot, is_valid_partition_name,
+                            validate_device_selector, is_fastboot_target_connected)
 from ui_metrics import column_width, tree_row_height
+try:
+    from .process_runner import ProcessCancelledError, run_streaming, terminate_process
+except ImportError:  # direct execution from the src directory
+    from process_runner import ProcessCancelledError, run_streaming, terminate_process
 
 def _windows_process_options():
     """Keep ADB/Fastboot subprocesses from flashing console windows on Windows."""
@@ -148,6 +153,10 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self._ui_font = "Segoe UI" if os.name == "nt" else "Sans"
         self._mono_font = "Consolas" if os.name == "nt" else "Monospace"
         self.events=queue.Queue(); self.worker=None; self.cancel_event=threading.Event()
+        # One active device-mutating/diagnostic command per serial. This avoids
+        # overlapping operations against the same physical target.
+        self._device_operation_locks = {}
+        self._device_operation_locks_guard = threading.Lock()
         menu=tk.Menu(self)
         help_menu=tk.Menu(menu, tearoff=False)
         help_menu.add_command(label="Debug Tools / Open Logs", command=self._open_log_folder)
@@ -1405,23 +1414,45 @@ class PayloadDumperApp(TkinterDnD.Tk):
                         [binary, "-s", serial, "set_active", slot])
             lines = [f"[DroidLab] Request active slot {slot.upper()} on {serial}."]
             success = False
-            for index, command in enumerate(commands):
-                rendered = " ".join(shlex.quote(part) for part in command)
-                lines.append("$ " + rendered)
+            with self._device_operation_locks_guard:
+                operation_lock = self._device_operation_locks.setdefault(serial, threading.Lock())
+            if not operation_lock.acquire(blocking=False):
+                lines.append("[DroidLab] Another operation is already running for device %s." % serial)
+            else:
                 try:
-                    result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8",
-                        errors="replace", timeout=12, check=False, **_windows_process_options())
-                    output = ((result.stdout or "") + (result.stderr or "")).strip()
-                    lines.append(output or f"(no output; exit code {result.returncode})")
-                    if result.returncode == 0:
-                        success = True
-                        break
-                    if index == 0:
-                        lines.append("Primary syntax failed; trying legacy set_active syntax.")
-                except (OSError, subprocess.TimeoutExpired) as exc:
-                    lines.append("ERROR: " + str(exc))
-                    if index == 0:
-                        lines.append("Trying legacy set_active syntax.")
+                    for index, command in enumerate(commands):
+                        rendered = " ".join(shlex.quote(part) for part in command)
+                        lines.append("$ " + rendered)
+                        try:
+                            # Slot switching is a mutation too: serialize it with
+                            # other commands and confirm the target is still attached.
+                            probe = subprocess.run([binary, "devices", "-l"], capture_output=True,
+                                text=True, encoding="utf-8", errors="replace", timeout=8,
+                                check=False, **_windows_process_options())
+                            if not is_fastboot_target_connected(serial, probe.stdout, probe.returncode):
+                                raise RuntimeError(
+                                    "Fastboot target %r is no longer present in the fresh device scan."
+                                    % serial
+                                )
+                            result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8",
+                                errors="replace", timeout=12, check=False, **_windows_process_options())
+                            output = ((result.stdout or "") + (result.stderr or "")).strip()
+                            lines.append(output or f"(no output; exit code {result.returncode})")
+                            if result.returncode == 0:
+                                success = True
+                                break
+                            if index == 0:
+                                lines.append("Primary syntax failed; trying legacy set_active syntax.")
+                        except (OSError, subprocess.TimeoutExpired, RuntimeError) as exc:
+                            lines.append("ERROR: " + str(exc))
+                            # Do not retry a target-validation failure with another
+                            # mutating syntax. Retry only a failed Fastboot command.
+                            if index == 0 and not isinstance(exc, RuntimeError):
+                                lines.append("Trying legacy set_active syntax.")
+                            else:
+                                break
+                finally:
+                    operation_lock.release()
             lines.append("[DroidLab] Slot switch " + ("succeeded." if success else "failed."))
             def finish():
                 for line in lines:
@@ -1628,53 +1659,86 @@ class PayloadDumperApp(TkinterDnD.Tk):
         self.events.put(("console_line", (kind, "[DroidLab] $ " + rendered + "\n")))
         process = None
         output_lines = []
+        retained_output_chars = 0
+        max_retained_output_chars = 2 * 1024 * 1024
+        console_lines_sent = 0
+        dropped_console_lines = 0
         try:
-            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                       stdin=subprocess.DEVNULL, text=True, encoding="utf-8",
-                                       errors="replace", bufsize=1, **_windows_process_options())
-            # A dedicated reader avoids blocking the timeout loop on readline() when
-            # a tool stays silent. Queue and thread usage is portable across Windows/Linux.
-            lines = Queue()
-
-            def read_output():
-                try:
-                    for line in process.stdout:
-                        lines.put(line)
-                finally:
-                    lines.put(None)
-
-            reader = threading.Thread(target=read_output, name="DroidLab-CommandOutput", daemon=True)
-            reader.start()
-            deadline = time.monotonic() + timeout
-            stream_closed = False
-            while not stream_closed:
-                if time.monotonic() >= deadline and process.poll() is None:
-                    process.kill()
-                    process.wait()
-                    raise subprocess.TimeoutExpired(command, timeout)
-                try:
-                    line = lines.get(timeout=min(0.15, max(0.01, deadline - time.monotonic())))
-                except Empty:
-                    continue
-                if line is None:
-                    stream_closed = True
-                else:
-                    output_lines.append(line)
+            # Device lists can become stale between selection/confirmation and
+            # execution. Revalidate a targeted Fastboot command immediately
+            # before spawning it, especially for flash/erase/unlock operations.
+            executable = Path(command[0]).name.lower() if command else ""
+            if executable in ("fastboot", "fastboot.exe") and "-s" in command:
+                selector_index = command.index("-s")
+                if selector_index + 1 >= len(command):
+                    raise ValueError("Fastboot command has a malformed -s selector.")
+                target_serial = command[selector_index + 1]
+                args_after_target = command[selector_index + 2:]
+                is_discovery = bool(args_after_target and args_after_target[0].lower() in
+                                    ("devices", "help", "--help", "--version", "version", "getvar"))
+                if not is_discovery:
+                    probe = subprocess.run(
+                        [command[0], "devices", "-l"], capture_output=True, text=True,
+                        encoding="utf-8", errors="replace", timeout=8, check=False,
+                        **_windows_process_options()
+                    )
+                    if not is_fastboot_target_connected(target_serial, probe.stdout, probe.returncode):
+                        raise RuntimeError(
+                            "Fastboot target %r is no longer present in the fresh device scan. "
+                            "Refresh devices, verify the target, and retry. Probe output: %s"
+                            % (target_serial, (probe.stdout + "\n" + probe.stderr).strip())
+                        )
+            console_lines_sent = 0
+            def publish_line(line):
+                nonlocal console_lines_sent
+                if console_lines_sent < 5000:
                     self.events.put(("console_line", (kind, line)))
-            code = process.wait()
-            output = "".join(output_lines).strip() or "Exit status: " + str(code)
+                    console_lines_sent += 1
+
+            result = run_streaming(
+                command,
+                timeout=timeout,
+                cancel_event=self.cancel_event,
+                on_line=publish_line,
+                max_output_chars=2 * 1024 * 1024,
+                max_queue_lines=1000,
+                popen_kwargs=_windows_process_options(),
+            )
+            code = result.returncode
+            output = result.stdout.strip() or "Exit status: " + str(code)
             self.events.put(("console_line", (kind, "[DroidLab] Process exited with code " + str(code) + "\n")))
             self.events.put(("adb_result", (kind, code, output)))
-        except (OSError, subprocess.TimeoutExpired) as exc:
+        except (OSError, subprocess.TimeoutExpired, ValueError, RuntimeError, ProcessCancelledError) as exc:
             if process and process.poll() is None:
                 process.kill()
-                process.wait()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    logging.error("Timed out waiting for command process after forced termination")
             message = str(exc)
             self.events.put(("console_line", (kind, "[DroidLab] ERROR: " + message + "\n")))
             self.events.put(("adb_result", (kind, -1, message)))
 
     def _adb_task(self, command, timeout, kind):
-        self._stream_process(command, timeout, kind)
+        serial = None
+        if "-s" in command:
+            selector_index = command.index("-s")
+            if selector_index + 1 < len(command):
+                serial = command[selector_index + 1]
+        if not serial:
+            self._stream_process(command, timeout, kind)
+            return
+        with self._device_operation_locks_guard:
+            operation_lock = self._device_operation_locks.setdefault(serial, threading.Lock())
+        if not operation_lock.acquire(blocking=False):
+            message = "Another DroidLab operation is already running for device %s; this command was not started." % serial
+            self.events.put(("console_line", (kind, "[DroidLab] ERROR: " + message + "\n")))
+            self.events.put(("adb_result", (kind, -1, message)))
+            return
+        try:
+            self._stream_process(command, timeout, kind)
+        finally:
+            operation_lock.release()
 
     def _run_adb_shell(self):
         text = self.adb_shell_command.get().strip()
@@ -1713,10 +1777,27 @@ class PayloadDumperApp(TkinterDnD.Tk):
             # target it automatically for commands other than device discovery.
             discovery = args[0] in ("devices", "version", "help")
             selected = self._adb_require(("device",)) if not discovery else None
-            if selected and not any(args[i] == "-s" for i in range(min(len(args), 3))):
-                args = ["-s", selected[1]] + args
+            if not discovery:
+                if not selected:
+                    return
+                try:
+                    explicit = validate_device_selector(args, "adb", selected[1])
+                except ValueError as exc:
+                    messagebox.showerror("Device target conflict", str(exc))
+                    self._append("ADB command rejected: " + str(exc))
+                    return
+                if explicit is None:
+                    args = ["-s", selected[1]] + args
             command = [binary] + args
-            if is_destructive_adb(tokens) and not messagebox.askyesno("Confirm ADB command", "This command can change device state:\n\n" + text + "\n\nContinue?", icon="warning"):
+            target_label = selected[1] if selected else "no device (discovery/help command)"
+            if not messagebox.askyesno(
+                "Confirm advanced ADB command",
+                "Advanced ADB commands are unrestricted and cannot be proven safe.\n\n"
+                + "Executable: " + binary + "\nTarget: " + target_label + "\nArguments: "
+                + " ".join(shlex.quote(x) for x in args)
+                + "\n\nCommands may irreversibly modify device data. Continue?",
+                icon="warning",
+            ):
                 self._append("ADB command cancelled by user.")
                 return
             self._append("Running host ADB command: " + " ".join(shlex.quote(x) for x in command))
@@ -1727,7 +1808,14 @@ class PayloadDumperApp(TkinterDnD.Tk):
         if not selected:
             return
         binary, serial = selected
-        if is_destructive_adb(["shell"] + tokens) and not messagebox.askyesno("Confirm potentially destructive shell command", "This command may change device state or delete data:\n\n" + text + "\n\nRun it on " + serial + "?", icon="warning"):
+        if not messagebox.askyesno(
+            "Confirm advanced device-shell command",
+            "Device-shell commands are unrestricted and cannot be proven safe.\n\n"
+            + "Executable: " + binary + "\nTarget: " + serial + "\nArguments: "
+            + " ".join(shlex.quote(x) for x in tokens)
+            + "\n\nThis command may irreversibly modify device data. Continue?",
+            icon="warning",
+        ):
             self._append("Device-shell command cancelled by user.")
             return
         self._append("Running device shell command on " + serial + ": " + text)
@@ -1771,14 +1859,30 @@ class PayloadDumperApp(TkinterDnD.Tk):
             if shared and shared[1] == "fastboot":
                 serial = shared[0]
         discovery = tokens[0] in ("devices", "help", "--help", "--version", "version")
-        if serial and not discovery and not any(tokens[i] == "-s" for i in range(min(len(tokens), 3))):
-            tokens = ["-s", serial] + tokens
+        if not discovery:
+            if not serial:
+                messagebox.showerror("Device required", "Select a Fastboot device before running a device command.")
+                return
+            try:
+                explicit = validate_device_selector(tokens, "fastboot", serial)
+            except ValueError as exc:
+                messagebox.showerror("Device target conflict", str(exc))
+                self._append("Fastboot command rejected: " + str(exc))
+                return
+            if explicit is None:
+                tokens = ["-s", serial] + tokens
         command = [binary] + tokens
         rendered = " ".join(shlex.quote(x) for x in command)
-        if is_destructive_fastboot(tokens):
-            if not messagebox.askyesno("Confirm potentially destructive Fastboot command", "Verify the connected device, image, and partition before continuing.\n\n" + rendered + "\n\nThis operation may erase data or make the device unbootable. Continue?", icon="warning"):
-                self._append("Manual Fastboot command cancelled: " + rendered)
-                return
+        if not messagebox.askyesno(
+            "Confirm advanced Fastboot command",
+            "Advanced Fastboot commands are unrestricted and cannot be proven safe.\n\n"
+            + "Executable: " + binary + "\nTarget: " + (serial or "no device (discovery/help command)")
+            + "\nArguments: " + " ".join(shlex.quote(x) for x in tokens)
+            + "\n\nCommands may erase data or make the device unbootable. Continue?",
+            icon="warning",
+        ):
+            self._append("Manual Fastboot command cancelled: " + rendered)
+            return
         self._append("Executing manual Fastboot command: " + rendered)
         self.status.set("Running Fastboot command…")
         # Only reboot changes USB mode. Do not trigger repeated device scans
@@ -1861,14 +1965,36 @@ class PayloadDumperApp(TkinterDnD.Tk):
         ttk.Button(buttons, text="Save visible log…", command=self._save_visible_adb_logcat).pack(side="left", padx=6)
         ttk.Button(buttons, text="Stop logcat", command=self._stop_adb_logcat).pack(side="right")
         process = self.adb_log_process
+        # Keep logcat separate from the app-wide event queue: a noisy device
+        # must not grow memory without bound or starve operation-result events.
+        log_queue = queue.Queue(maxsize=2000)
+        self.adb_log_queue = log_queue
+        self.adb_log_dropped = 0
         def reader():
             try:
                 if process.stdout:
                     for line in process.stdout:
-                        self.events.put(("adb_log_line", line.rstrip("\r\n")))
+                        item = line.rstrip("\r\n")
+                        try:
+                            log_queue.put_nowait(item)
+                        except queue.Full:
+                            try:
+                                log_queue.get_nowait()
+                            except queue.Empty:
+                                pass
+                            self.adb_log_dropped += 1
+                            try:
+                                log_queue.put_nowait(item)
+                            except queue.Full:
+                                self.adb_log_dropped += 1
             except (OSError, ValueError):
                 logging.exception("Error reading live logcat output")
             finally:
+                try:
+                    if process.stdout:
+                        process.stdout.close()
+                except (OSError, ValueError):
+                    pass
                 self.events.put(("adb_log_end", process.poll()))
         threading.Thread(target=reader, name="DroidLab-LogcatReader", daemon=True).start()
         window.protocol("WM_DELETE_WINDOW", self._stop_adb_logcat)
@@ -1897,10 +2023,14 @@ class PayloadDumperApp(TkinterDnD.Tk):
         except OSError as exc: messagebox.showerror("Logcat save failed",str(exc))
 
     def _stop_adb_logcat(self):
-        if self.adb_log_process and self.adb_log_process.poll() is None:self.adb_log_process.terminate()
-        self.adb_log_process=None
-        if self.adb_log_window and self.adb_log_window.winfo_exists():self.adb_log_window.destroy()
-        self.adb_log_window=self.adb_log_text=None
+        process = self.adb_log_process
+        self.adb_log_process = None
+        if process is not None:
+            # The reader thread owns stdout and closes it after termination.
+            terminate_process(process, grace_seconds=1.0)
+        if self.adb_log_window and self.adb_log_window.winfo_exists():
+            self.adb_log_window.destroy()
+        self.adb_log_window = self.adb_log_text = None
 
     def _save_adb_logcat(self):
         selected=self._adb_require(("device",))
@@ -1920,11 +2050,16 @@ class PayloadDumperApp(TkinterDnD.Tk):
                     _stdout,stderr=process.communicate(timeout=3600)
                     self.events.put(("adb_result",("logcat_file",process.returncode,"Saved logcat to "+path+(("\n"+stderr.strip()) if stderr and stderr.strip() else ""))))
                 except subprocess.TimeoutExpired:
-                    process.terminate()
-                    process.wait(timeout=10)
+                    terminate_process(process, grace_seconds=2.0)
+                    try:
+                        process.communicate(timeout=1)
+                    except subprocess.TimeoutExpired:
+                        if process.stderr:
+                            process.stderr.close()
                     self.events.put(("adb_result",("logcat_file",0,"One-hour capture limit reached. Partial logcat saved to "+path)))
-        except OSError as exc:
-            if process and process.poll() is None: process.terminate()
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            if process is not None:
+                terminate_process(process, grace_seconds=2.0)
             self.events.put(("adb_result",("logcat_file",-1,str(exc))))
 
     def _create_adb_bugreport(self):
@@ -2452,15 +2587,27 @@ class PayloadDumperApp(TkinterDnD.Tk):
     def _cancel(self):self.cancel_event.set();self.status.set("Cancelling…");self._append("Cancellation requested.")
     def _poll_events(self):
         logcat_changed = False
+        log_queue = getattr(self, "adb_log_queue", None)
+        if log_queue is not None and self.adb_log_text and self.adb_log_window and self.adb_log_window.winfo_exists():
+            # Bound UI work per tick so high-volume logcat cannot freeze the Tk loop.
+            for _ in range(300):
+                try:
+                    line = log_queue.get_nowait()
+                except queue.Empty:
+                    break
+                self.adb_log_lines.append(line)
+                logcat_changed = True
+            dropped = getattr(self, "adb_log_dropped", 0)
+            if dropped:
+                self.adb_log_lines.append("[DroidLab] %s logcat lines dropped because the display queue was full." % dropped)
+                self.adb_log_dropped = 0
+                logcat_changed = True
+            if len(self.adb_log_lines) > 10000:
+                del self.adb_log_lines[:-10000]
         try:
             while True:
                 kind,payload=self.events.get_nowait()
                 if kind=="log":self._append(payload)
-                elif kind=="adb_log_line":
-                    if self.adb_log_text and self.adb_log_window and self.adb_log_window.winfo_exists():
-                        self.adb_log_lines.append(payload)
-                        if len(self.adb_log_lines)>10000: del self.adb_log_lines[:len(self.adb_log_lines)-10000]
-                        logcat_changed = True
                 elif kind=="console_line":
                     kind_name, line = payload
                     target = self.fastboot_console if kind_name.startswith("fastboot") else self.adb_console

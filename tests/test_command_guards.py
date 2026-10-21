@@ -43,3 +43,41 @@ class PartitionNameTests(unittest.TestCase):
         self.assertFalse(is_valid_partition_name("-userdata"))
         self.assertFalse(is_valid_partition_name("."))
         self.assertFalse(is_valid_partition_name(""))
+
+
+class DeviceSelectorTests(unittest.TestCase):
+    def test_matching_selector_is_returned(self):
+        from src.command_guards import explicit_device_selector, validate_device_selector
+        self.assertEqual(explicit_device_selector(["-s", "device-1", "shell", "getprop"], "adb"), "device-1")
+        self.assertEqual(validate_device_selector(["-s", "device-1", "flash", "boot", "boot.img"], "fastboot", "device-1"), "device-1")
+
+    def test_conflicting_selector_is_rejected(self):
+        from src.command_guards import validate_device_selector
+        with self.assertRaisesRegex(ValueError, "targets serial"):
+            validate_device_selector(["-s", "other", "shell", "getprop"], "adb", "selected")
+
+    def test_repeated_and_malformed_selectors_are_rejected(self):
+        from src.command_guards import explicit_device_selector
+        for command in (["-s", "one", "-s", "two", "shell"], ["-s"], ["-s", "-d", "shell"]):
+            with self.subTest(command=command):
+                with self.assertRaises(ValueError):
+                    explicit_device_selector(command, "adb")
+
+    def test_shell_arguments_are_not_host_selectors(self):
+        from src.command_guards import explicit_device_selector
+        self.assertIsNone(explicit_device_selector(["shell", "echo", "-s", "not-a-host-selector"], "adb"))
+
+class FastbootTargetValidationTests(unittest.TestCase):
+    def test_target_must_be_present_in_successful_fresh_scan(self):
+        from src.command_guards import is_fastboot_target_connected
+        output = "SERIAL-1 fastboot product:device\nSERIAL-2 fastboot product:other\n"
+        self.assertTrue(is_fastboot_target_connected("SERIAL-1", output, 0))
+        self.assertFalse(is_fastboot_target_connected("MISSING", output, 0))
+        self.assertFalse(is_fastboot_target_connected("SERIAL-1", output, 1))
+
+    def test_other_transport_and_malformed_lines_are_ignored(self):
+        from src.command_guards import is_fastboot_target_connected
+        output = "SERIAL-1\nSERIAL-2 adb product:device\n"
+        self.assertFalse(is_fastboot_target_connected("SERIAL-1", output, 0))
+        self.assertFalse(is_fastboot_target_connected("SERIAL-2", output, 0))
+

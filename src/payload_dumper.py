@@ -6,9 +6,14 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 from pathlib import Path
 from typing import Callable
+if __package__:
+    from .process_runner import ProcessCancelledError, run_streaming, terminate_process
+else:
+    from process_runner import ProcessCancelledError, run_streaming, terminate_process
 
 Progress = Callable[[str], None]
 
@@ -48,6 +53,12 @@ def _find_cli() -> list[str] | None:
     return None
 
 
+
+def _terminate_process(proc: subprocess.Popen, grace_seconds: float = 5.0) -> None:
+    """Compatibility wrapper around the shared bounded termination helper."""
+    terminate_process(proc, grace_seconds)
+
+
 def _run_process(
     cli: list[str],
     args: list[str],
@@ -55,87 +66,19 @@ def _run_process(
     cancel_event=None,
     operation: str = "Payload operation",
 ) -> subprocess.CompletedProcess[str]:
-    """Stream backend output and share one cancellation path for inspect/extract."""
+    """Run the backend through the shared bounded streaming runner."""
     command = cli + args
-    if cancel_event is not None and cancel_event.is_set():
-        raise BackendError(f"{operation} cancelled by user.")
     try:
-        proc = subprocess.Popen(
+        return run_streaming(
             command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            bufsize=1,
+            cancel_event=cancel_event,
+            on_line=(lambda line: progress(line.rstrip())) if progress else None,
+            popen_kwargs={},
         )
+    except ProcessCancelledError as exc:
+        raise BackendError(f"{operation} cancelled by user.") from exc
     except OSError as exc:
         raise BackendError(f"Could not start payload-dumper-go: {exc}") from exc
-
-    assert proc.stdout is not None
-    finished = threading.Event()
-    cancellation_requested = threading.Event()
-
-    def watch_cancel():
-        """Terminate a quiet backend even while the reader is waiting for output."""
-        while not finished.wait(0.1):
-            if cancel_event is None or not cancel_event.is_set():
-                continue
-            cancellation_requested.set()
-            if proc.poll() is not None:
-                return
-            try:
-                proc.terminate()
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
-            except OSError:
-                # It may have exited between poll() and terminate().
-                pass
-            return
-
-    watcher = None
-    if cancel_event is not None:
-        watcher = threading.Thread(target=watch_cancel, daemon=True)
-        watcher.start()
-
-    lines = []
-    try:
-        for line in proc.stdout:
-            line = line.rstrip()
-            lines.append(line)
-            if progress:
-                progress(line)
-        code = proc.wait()
-    except BaseException:
-        if proc.poll() is None:
-            try:
-                proc.terminate()
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
-            except OSError:
-                pass
-        raise
-    finally:
-        finished.set()
-        if proc.poll() is None:
-            try:
-                proc.terminate()
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
-            except OSError:
-                pass
-        if watcher is not None:
-            watcher.join(timeout=0.2)
-
-    if cancellation_requested.is_set() or (cancel_event is not None and cancel_event.is_set()):
-        raise BackendError(f"{operation} cancelled by user.")
-    return subprocess.CompletedProcess(command, code, "\n".join(lines), "")
 
 
 def _run(
@@ -190,24 +133,99 @@ def extract(
     cli = _find_cli()
     if not cli:
         raise BackendError("payload-dumper-go was not found. Install it or use the bundled AppImage.")
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.mkdir(parents=True, exist_ok=True)
-    before = {path.resolve() for path in out.rglob("*") if path.is_file()}
-    args = ["-o", str(out)]
-    if selected:
-        args.extend(["-p", ",".join(selected)])
-    args.append(str(src))
-    if progress:
-        progress("Starting payload-dumper-go; backend hash checks are reported in the log.")
-    result = _run_process(cli, args, progress, cancel_event, "Extraction")
-    if result.returncode:
-        raise BackendError(
-            f"payload-dumper-go exited with status {result.returncode}. "
-            "Check the log; some delta OTA operation types are unsupported."
+    # A unique sibling staging directory keeps backend output isolated while
+    # remaining on the same filesystem as the destination for atomic linking.
+    stage = Path(tempfile.mkdtemp(prefix=".droidlab-extract-", dir=str(out.parent)))
+    published: list[Path] = []
+    try:
+        args = ["-o", str(stage)]
+        if selected:
+            args.extend(["-p", ",".join(selected)])
+        args.append(str(src))
+        if progress:
+            progress("Starting payload-dumper-go in an isolated staging directory.")
+        result = _run_process(cli, args, progress, cancel_event, "Extraction")
+        if result.returncode:
+            raise BackendError(
+                f"payload-dumper-go exited with status {result.returncode}. "
+                "Check the log; some delta OTA operation types are unsupported."
+            )
+        if cancel_event is not None and cancel_event.is_set():
+            raise BackendError("Extraction cancelled by user.")
+
+        artifacts = sorted(
+            path for path in stage.rglob("*.img")
+            if path.is_file() and not path.is_symlink() and path.stat().st_size > 0
         )
-    outputs = sorted(path for path in out.rglob("*") if path.is_file() and path.resolve() not in before)
-    if not outputs:
-        outputs = sorted(path for path in out.rglob("*.img") if path.is_file())
-    return outputs
+        if not artifacts:
+            raise BackendError("Extraction completed without producing any non-empty .img artifacts.")
+
+        if selected:
+            actual = {path.stem.casefold() for path in artifacts}
+            missing = sorted({name.casefold() for name in selected} - actual)
+            if missing:
+                raise BackendError(
+                    "Extraction did not produce the requested partition image(s): "
+                    + ", ".join(missing)
+                )
+
+        output_root = out.resolve()
+        for artifact in artifacts:
+            relative = artifact.relative_to(stage)
+            destination = out / relative
+            # Do not allow a backend-created symlink or path resolution to publish
+            # outside the chosen output root.
+            destination_parent = destination.parent.resolve()
+            try:
+                destination_parent.relative_to(output_root)
+            except ValueError as exc:
+                raise BackendError("An extracted artifact resolves outside the output directory.") from exc
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination_parent = destination.parent.resolve()
+            try:
+                destination_parent.relative_to(output_root)
+            except ValueError as exc:
+                raise BackendError("An output path resolves outside the output directory.") from exc
+            if destination.exists() or destination.is_symlink():
+                raise BackendError(
+                    f"Output already exists and will not be overwritten: {destination}"
+                )
+            try:
+                # Hard-link publication is atomic and fails if a destination
+                # appeared concurrently; stage is created on the same filesystem.
+                os.link(artifact, destination)
+            except FileExistsError as exc:
+                raise BackendError(
+                    f"Output already exists and will not be overwritten: {destination}"
+                ) from exc
+            except OSError as exc:
+                raise BackendError(f"Could not publish extracted artifact {destination}: {exc}") from exc
+            published.append(destination)
+            artifact.unlink()
+
+        if cancel_event is not None and cancel_event.is_set():
+            raise BackendError("Extraction cancelled before publication completed.")
+        if progress:
+            progress(f"Published {len(published)} verified non-empty image artifact(s).")
+        return published
+    except Exception:
+        # Publication is a multi-file operation, not a filesystem-wide atomic
+        # transaction. Roll back files created by this operation on failure.
+        for destination in reversed(published):
+            try:
+                destination.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
+    finally:
+        try:
+            shutil.rmtree(stage)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            raise BackendError(f"Extraction staging cleanup failed for {stage}: {exc}") from exc
 
 
 def sha256_file(path: str, chunk_size: int = 1024 * 1024) -> str:
