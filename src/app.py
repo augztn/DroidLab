@@ -12,9 +12,9 @@ from command_guards import (is_destructive_adb, is_destructive_fastboot, is_vali
                             validate_device_selector, is_fastboot_target_connected)
 from ui_metrics import column_width, tree_row_height
 try:
-    from .process_runner import ProcessCancelledError, run_streaming
+    from .process_runner import ProcessCancelledError, run_streaming, terminate_process
 except ImportError:  # direct execution from the src directory
-    from process_runner import ProcessCancelledError, run_streaming
+    from process_runner import ProcessCancelledError, run_streaming, terminate_process
 
 def _windows_process_options():
     """Keep ADB/Fastboot subprocesses from flashing console windows on Windows."""
@@ -2018,10 +2018,18 @@ class PayloadDumperApp(TkinterDnD.Tk):
         except OSError as exc: messagebox.showerror("Logcat save failed",str(exc))
 
     def _stop_adb_logcat(self):
-        if self.adb_log_process and self.adb_log_process.poll() is None:self.adb_log_process.terminate()
-        self.adb_log_process=None
-        if self.adb_log_window and self.adb_log_window.winfo_exists():self.adb_log_window.destroy()
-        self.adb_log_window=self.adb_log_text=None
+        process = self.adb_log_process
+        self.adb_log_process = None
+        if process is not None:
+            terminate_process(process, grace_seconds=1.0)
+            try:
+                if process.stdout:
+                    process.stdout.close()
+            except (OSError, ValueError):
+                pass
+        if self.adb_log_window and self.adb_log_window.winfo_exists():
+            self.adb_log_window.destroy()
+        self.adb_log_window = self.adb_log_text = None
 
     def _save_adb_logcat(self):
         selected=self._adb_require(("device",))
@@ -2041,11 +2049,11 @@ class PayloadDumperApp(TkinterDnD.Tk):
                     _stdout,stderr=process.communicate(timeout=3600)
                     self.events.put(("adb_result",("logcat_file",process.returncode,"Saved logcat to "+path+(("\n"+stderr.strip()) if stderr and stderr.strip() else ""))))
                 except subprocess.TimeoutExpired:
-                    process.terminate()
-                    process.wait(timeout=10)
+                    terminate_process(process, grace_seconds=2.0)
                     self.events.put(("adb_result",("logcat_file",0,"One-hour capture limit reached. Partial logcat saved to "+path)))
-        except OSError as exc:
-            if process and process.poll() is None: process.terminate()
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            if process is not None:
+                terminate_process(process, grace_seconds=2.0)
             self.events.put(("adb_result",("logcat_file",-1,str(exc))))
 
     def _create_adb_bugreport(self):
